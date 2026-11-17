@@ -13,9 +13,11 @@ type FlashlightView<'w, 's> = Query<
     (With<Flashlight>, Without<MainCamera>),
 >;
 
+#[allow(clippy::too_many_arguments, reason = "Bevy system parameters.")]
 pub fn read_input(
     keys: Res<ButtonInput<KeyCode>>,
     mouse: Res<AccumulatedMouseMotion>,
+    bindings: Res<crate::preferences::Preferences>,
     windows: Query<&Window, With<PrimaryWindow>>,
     smoke: Res<SmokeTest>,
     mut session: ResMut<Session>,
@@ -66,13 +68,21 @@ pub fn read_input(
         i32::from(keys.pressed(positive)) as f32 - i32::from(keys.pressed(negative)) as f32
     };
     player.command.movement = Vec2::new(
-        axis(KeyCode::KeyD, KeyCode::KeyA),
-        axis(KeyCode::KeyW, KeyCode::KeyS),
+        axis(
+            bindings.key("right", KeyCode::KeyD),
+            bindings.key("left", KeyCode::KeyA),
+        ),
+        axis(
+            bindings.key("forward", KeyCode::KeyW),
+            bindings.key("back", KeyCode::KeyS),
+        ),
     );
-    player.command.sprint = keys.pressed(KeyCode::ShiftLeft) || keys.pressed(KeyCode::ShiftRight);
-    player.command.crouch = keys.pressed(KeyCode::ControlLeft) || keys.pressed(KeyCode::KeyC);
+    player.command.sprint = keys.pressed(bindings.key("sprint", KeyCode::ShiftLeft))
+        || keys.pressed(KeyCode::ShiftRight);
+    player.command.crouch =
+        keys.pressed(bindings.key("crouch", KeyCode::ControlLeft)) || keys.pressed(KeyCode::KeyC);
     // Buffer the edge until a physics tick consumes it (also at high display FPS).
-    player.command.jump |= keys.just_pressed(KeyCode::Space);
+    player.command.jump |= keys.just_pressed(bindings.key("jump", KeyCode::Space));
     // Mouse deltas are already accumulated per frame: NEVER multiply by dt.
     if player.look_armed {
         player.yaw =
@@ -81,7 +91,7 @@ pub fn read_input(
     }
     player.look_armed = true;
     player.command.yaw = player.yaw;
-    if keys.just_pressed(KeyCode::KeyF) {
+    if keys.just_pressed(bindings.key("flashlight", KeyCode::KeyF)) {
         comfort.flashlight = !comfort.flashlight;
     }
 }

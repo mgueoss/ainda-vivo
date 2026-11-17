@@ -4,6 +4,7 @@ mod app;
 mod desktop;
 mod diagnostics;
 mod interaction;
+mod preferences;
 mod scene;
 mod smoke;
 mod ui;

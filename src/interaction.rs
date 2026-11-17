@@ -13,6 +13,7 @@ pub struct Interactable {
 
 pub fn interact(
     keys: Res<ButtonInput<KeyCode>>,
+    bindings: Res<crate::preferences::Preferences>,
     world: Res<CollisionWorld>,
     mut session: ResMut<Session>,
     camera: Query<&Transform, With<MainCamera>>,
@@ -56,8 +57,13 @@ pub fn interact(
             return;
         }
     }
-    session.prompt = format!("[E] {}", target.label);
-    if keys.just_pressed(KeyCode::KeyE) {
+    let key = format!("{:?}", bindings.key("interact", KeyCode::KeyE));
+    session.prompt = format!(
+        "[{}] {}",
+        key.strip_prefix("Key").unwrap_or(&key),
+        target.label
+    );
+    if keys.just_pressed(bindings.key("interact", KeyCode::KeyE)) {
         let message = session.progress.apply(target.action);
         session.say(message);
     }

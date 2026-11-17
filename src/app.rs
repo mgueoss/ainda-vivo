@@ -117,6 +117,7 @@ pub fn restart(session: &mut Session, player: &mut LocalPlayer, comfort: &mut Co
 pub fn run() -> bevy::app::AppExit {
     let smoke = crate::smoke::SmokeTest::from_args();
     info!("AINDA VIVO {VERSION}");
+    let (preferences, comfort) = crate::preferences::Preferences::load(smoke.enabled);
     let mut app = App::new();
     if smoke.enabled {
         app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
@@ -139,7 +140,8 @@ pub fn run() -> bevy::app::AppExit {
         })
         .insert_resource(smoke)
         .init_resource::<Session>()
-        .init_resource::<Comfort>()
+        .insert_resource(comfort)
+        .insert_resource(preferences)
         .init_resource::<CollisionWorld>()
         .init_resource::<crate::diagnostics::Performance>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
@@ -167,6 +169,7 @@ pub fn run() -> bevy::app::AppExit {
                 crate::diagnostics::update,
                 crate::ui::refresh,
                 crate::desktop::sync_cursor,
+                crate::preferences::save,
             )
                 .chain(),
         )

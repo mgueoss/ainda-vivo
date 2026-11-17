@@ -39,7 +39,7 @@ New-Item -ItemType Directory -Path $env:CARGO_HOME,$env:CARGO_TARGET_DIR,$env:TE
 Push-Location -LiteralPath $projectRoot
 try {
     switch ($Action) {
-        'Test' { & cargo test -p ainda_vivo_core --locked; if ($LASTEXITCODE -ne 0) { throw 'Testes falharam.' }; break }
+        'Test' { & cargo test --workspace --locked -j $Jobs; if ($LASTEXITCODE -ne 0) { throw 'Testes falharam.' }; break }
         'Check' { & cargo fmt --all -- --check; if ($LASTEXITCODE -ne 0) { throw 'Formatacao pendente.' }; & cargo clippy --workspace --all-targets --locked -j $Jobs -- -D warnings; if ($LASTEXITCODE -ne 0) { throw 'Verificacao falhou.' }; break }
         default {
             & cargo build --locked -j $Jobs
@@ -47,7 +47,7 @@ try {
             if ($Action -eq 'Build') { Write-Host "Pronto: $env:CARGO_TARGET_DIR\debug\ainda-vivo.exe"; break }
             $binary = Join-Path $env:CARGO_TARGET_DIR 'debug\ainda-vivo.exe'
             $log = Join-Path $BuildRoot ('logs\' + (Get-Date -Format 'yyyy-MM-dd-HHmmss') + '.log')
-            Write-Host "AINDA VIVO v0.0.1 | registro: $log"
+            Write-Host "AINDA VIVO v0.0.2 | registro: $log"
             if ($Action -eq 'Smoke') {
                 & $binary --smoke-test --smoke-report (Join-Path $BuildRoot 'logs\smoke-report.txt') 2>&1 | Tee-Object -FilePath $log
             } else {

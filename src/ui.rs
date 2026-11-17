@@ -93,7 +93,7 @@ pub fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
         Node { width: percent(92), max_width: px(660), padding: UiRect::all(px(24)),
             flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },
         children![
-            style.text("●  REGISTRO EXPERIMENTAL  /  v0.0.1", 13.0, Color::srgb(0.70, 0.31, 0.25)),
+            style.text("●  REGISTRO EXPERIMENTAL  /  v0.0.2", 13.0, Color::srgb(0.70, 0.31, 0.25)),
             (style.text("AINDA VIVO", 52.0, INK), TextRole::Heading),
             (style.text("Não siga a sombra.", 17.0, MUTED), TextRole::Subtitle),
             style.text("WASD  mover    MOUSE  olhar    SHIFT  correr    CTRL/C  agachar\nE  interagir    F  lanterna    ESPAÇO  pular    ESC  pausar    F3  diagnóstico", 14.0, MUTED),

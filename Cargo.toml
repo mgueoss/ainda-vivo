@@ -1,6 +1,6 @@
 [package]
 name = "ainda-vivo"
-version = "0.0.1"
+version = "0.0.2"
 edition = "2024"
 rust-version = "1.89"
 publish = false
@@ -40,5 +40,5 @@ debug = 0
 [[bin]]
 name = "ainda-vivo"
 path = "src/main.rs"
-test = false
+test = true
 bench = false

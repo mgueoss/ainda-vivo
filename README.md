@@ -1,4 +1,6 @@
-# AINDA VIVO — v0.0.1
+# AINDA VIVO — v0.0.2
+
+Novidades: preferências de conforto salvas, teclas personalizáveis por arquivo e tempos de quadro registrados por sessão. Consulte [as mudanças e os novos controles](docs/V0.0.2.md). A pasta do checkout mantém o nome original; o executável novo é `windows/ainda-vivo-v0.0.2.exe`, aberto pelo JOGAR.cmd. A versão anterior foi preservada.
 
 Protótipo real para Windows, feito em Rust + Bevy. Direção: usuário. Programação: IA, com decisões registradas aqui. PC primeiro; Android e LAN depois.
 
@@ -28,7 +30,7 @@ O jogo pausa ao perder o foco. Fechar a janela encerra o programa. O menu permit
 
 - Balanço desligado por padrão. A opção suave desloca a câmera verticalmente em no máximo 6 mm; não inclina o horizonte.
 - Sem motion blur, distorção de lente, aberração cromática, granulação, flashes ou mudança de FOV ao correr. O estilo de gravação usa enquadramento, luz e interface.
-- Campo de visão **vertical** ajustável de 55° a 80°; inicial 65°. Sensibilidade ajustável no menu. Preferências ainda não persistem entre execuções.
+- Campo de visão **vertical** ajustável de 55° a 80°; inicial 65°. Sensibilidade ajustável no menu. Preferências são salvas automaticamente.
 - Física fixa em 60 Hz, interpolação visual e aceleração suave. VSync ligado inicialmente; FPS desbloqueável no menu.
 - Janela inicial de 1280 × 720, redimensionável. Uma lanterna com sombras, cinco lâmpadas simples e materiais locais.
 - Referência de direção: Ryzen 5 5600G, GTX 1660 Super, 16 GB. Não é uma garantia de FPS; medições reais ficam em `docs/VALIDACAO.md`.
@@ -59,7 +61,7 @@ Os comandos Cargo convencionais também funcionam, desde que haja espaço no dis
 
 ```powershell
 cargo run --locked
-cargo test -p ainda_vivo_core --locked
+cargo test --workspace --locked
 cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 ```
@@ -72,7 +74,7 @@ Esta é uma prova de jogabilidade, não a campanha. Inclui exploração, corrida
 
 O controlador usa uma caixa cinemática de 54 cm de largura contra caixas estáticas alinhadas aos eixos, com varredura contínua e deslizamento. Não é uma simulação de corpos rígidos: não suporta rampas, escadas automáticas, empurrar objetos, plataformas móveis ou colisores rotacionados. Não inserir essas geometrias sem ampliar e testar a física. Agachar mantém os pés no chão e impede levantar dentro de uma travessa baixa.
 
-Sem save, multiplayer, Android, calibração automática, instalador de conteúdo ou download interno. Ilusões individuais, morte silenciosa e campanha são diretrizes futuras, não funcionalidades já implementadas.
+Sem salvamento de progresso, multiplayer, Android, calibração automática, instalador de conteúdo ou download interno. Ilusões individuais, morte silenciosa e campanha são diretrizes futuras, não funcionalidades já implementadas.
 
 Veja [arquitetura](docs/ARQUITETURA.md), [validação](docs/VALIDACAO.md) e [próximos passos](docs/PROXIMOS_PASSOS.md).
 
