@@ -1,0 +1,8 @@
+/target/
+/logs/
+*.pdb
+*.log
+local-build.ps1
+
+/windows/
+*.zip
