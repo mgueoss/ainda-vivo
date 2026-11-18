@@ -1,0 +1,7 @@
+AINDA VIVO v0.0.4
+render/integration smoke: PASS
+frames: 3280
+map audit: 15 sectors, 22 bidirectional portals (closed gate isolated)
+checks: full walking route, movement, grounding, wall collision, pause, crouch, fuse ray + E, wall occlusion, panel ray + E, gate traversal, exit, restart, finite camera, workshop cue, paused cue, lighting recovery, ambience restart, VHS mode capture
+spatial audio playback/pause check requested: true
+failures: []
