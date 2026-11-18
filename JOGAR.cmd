@@ -1,5 +1,25 @@
 @echo off
 cd /d "%~dp0"
+if exist "%~dp0windows\ainda-vivo-v0.0.7.exe" (
+    start "" "%~dp0windows\ainda-vivo-v0.0.7.exe"
+    exit /b
+)
+if exist "%~dp0windows\ainda-vivo-v0.0.6.exe" (
+    start "" "%~dp0windows\ainda-vivo-v0.0.6.exe"
+    exit /b
+)
+if exist "%~dp0windows\ainda-vivo-v0.0.5.exe" (
+    start "" "%~dp0windows\ainda-vivo-v0.0.5.exe"
+    exit /b
+)
+if exist "%~dp0windows\ainda-vivo-v0.0.4.exe" (
+    start "" "%~dp0windows\ainda-vivo-v0.0.4.exe"
+    exit /b
+)
+if exist "%~dp0windows\ainda-vivo-v0.0.3.exe" (
+    start "" "%~dp0windows\ainda-vivo-v0.0.3.exe"
+    exit /b
+)
 if exist "%~dp0windows\ainda-vivo-v0.0.2.exe" (
     start "" "%~dp0windows\ainda-vivo-v0.0.2.exe"
     exit /b

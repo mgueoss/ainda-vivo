@@ -41,6 +41,9 @@ pub fn read_input(
     if keys.just_pressed(KeyCode::F3) {
         comfort.diagnostics = !comfort.diagnostics;
     }
+    if keys.just_pressed(KeyCode::F4) {
+        comfort.vhs = comfort.vhs.next();
+    }
     if keys.just_pressed(KeyCode::Escape) {
         session.screen = match session.screen {
             Screen::Playing => Screen::Paused,
@@ -105,7 +108,7 @@ pub fn simulate(
     if session.screen != Screen::Playing {
         return;
     }
-    let solids = world.active(session.progress.power_restored);
+    let solids = world.active(session.progress.exit_unlocked());
     let command = player.command;
     player.command.jump = false;
     player.body.step(command, time.delta_secs(), &solids);
@@ -116,7 +119,7 @@ pub fn simulate(
     }
     session.elapsed += time.delta_secs();
     session.message_left = (session.message_left - time.delta_secs()).max(0.0);
-    if session.progress.power_restored && player.body.feet.z < -10.7 {
+    if session.progress.exit_unlocked() && crate::scene::station::reached_exit(player.body.feet) {
         session.screen = Screen::Complete;
         info!("Expedição concluída em {:.1}s", session.elapsed);
     }
@@ -157,8 +160,8 @@ pub fn update_camera(
         perspective.fov = comfort.fov_degrees.to_radians();
     }
     if let Ok((mut light_transform, mut visibility)) = light.single_mut() {
-        light_transform.translation =
-            transform.translation + transform.rotation * Vec3::new(0.12, -0.12, -0.05);
+        // Share the eye origin to eliminate parallax against nearby surfaces.
+        light_transform.translation = transform.translation;
         light_transform.rotation = transform.rotation;
         *visibility = if comfort.flashlight {
             Visibility::Visible

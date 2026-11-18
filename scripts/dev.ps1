@@ -47,7 +47,7 @@ try {
             if ($Action -eq 'Build') { Write-Host "Pronto: $env:CARGO_TARGET_DIR\debug\ainda-vivo.exe"; break }
             $binary = Join-Path $env:CARGO_TARGET_DIR 'debug\ainda-vivo.exe'
             $log = Join-Path $BuildRoot ('logs\' + (Get-Date -Format 'yyyy-MM-dd-HHmmss') + '.log')
-            Write-Host "AINDA VIVO v0.0.2 | registro: $log"
+            Write-Host "AINDA VIVO | registro: $log"
             if ($Action -eq 'Smoke') {
                 & $binary --smoke-test --smoke-report (Join-Path $BuildRoot 'logs\smoke-report.txt') 2>&1 | Tee-Object -FilePath $log
             } else {

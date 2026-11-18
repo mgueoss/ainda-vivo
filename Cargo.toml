@@ -1,6 +1,6 @@
 [package]
 name = "ainda-vivo"
-version = "0.0.2"
+version = "0.0.7"
 edition = "2024"
 rust-version = "1.89"
 publish = false
@@ -17,7 +17,8 @@ bevy = { version = "=0.18.1", default-features = false, features = [
     "bevy_window", "bevy_winit", "keyboard", "mouse", "bevy_color",
     "bevy_camera", "bevy_light", "bevy_mesh", "bevy_image", "bevy_shader",
     "bevy_render", "bevy_core_pipeline", "bevy_pbr", "bevy_text",
-    "bevy_ui", "bevy_ui_render", "default_font", "tonemapping_luts", "zstd_rust"
+    "bevy_ui", "bevy_ui_render", "default_font", "tonemapping_luts", "zstd_rust",
+    "bevy_audio"
 ] }
 
 [profile.dev]

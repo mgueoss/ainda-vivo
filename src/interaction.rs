@@ -8,7 +8,6 @@ pub const REACH: f32 = 2.4;
 pub struct Interactable {
     pub bounds: Aabb,
     pub action: Action,
-    pub label: &'static str,
 }
 
 pub fn interact(
@@ -31,25 +30,22 @@ pub fn interact(
     let mut best = REACH;
     let mut target = None;
     for item in &targets {
-        if item.action == Action::TakeFuse && session.progress.has_fuse {
+        let Some(label) = session.progress.prompt(item.action) else {
             continue;
-        }
-        if item.action == Action::RestorePower && session.progress.power_restored {
-            continue;
-        }
+        };
         if let Some(distance) = item.bounds.ray(origin, direction, REACH)
             && distance <= best
         {
             best = distance;
-            target = Some(item);
+            target = Some((item, label));
         }
     }
-    let Some(target) = target else {
+    let Some((target, label)) = target else {
         return;
     };
     // Prevent interaction through walls. Target surfaces can overlap their own
     // supporting geometry slightly, so use a small, bounded tolerance.
-    for solid in world.active(session.progress.power_restored) {
+    for solid in world.active(session.progress.exit_unlocked()) {
         if solid
             .ray(origin, direction, best)
             .is_some_and(|d| d + 0.035 < best)
@@ -58,11 +54,7 @@ pub fn interact(
         }
     }
     let key = format!("{:?}", bindings.key("interact", KeyCode::KeyE));
-    session.prompt = format!(
-        "[{}] {}",
-        key.strip_prefix("Key").unwrap_or(&key),
-        target.label
-    );
+    session.prompt = format!("[{}] {}", key.strip_prefix("Key").unwrap_or(&key), label);
     if keys.just_pressed(bindings.key("interact", KeyCode::KeyE)) {
         let message = session.progress.apply(target.action);
         session.say(message);

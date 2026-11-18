@@ -1,16 +1,18 @@
-# AINDA VIVO — v0.0.2
+# AINDA VIVO — v0.0.7
 
-Novidades: preferências de conforto salvas, teclas personalizáveis por arquivo e tempos de quadro registrados por sessão. Consulte [as mudanças e os novos controles](docs/V0.0.2.md). A pasta do checkout mantém o nome original; o executável novo é `windows/ainda-vivo-v0.0.2.exe`, aberto pelo JOGAR.cmd. A versão anterior foi preservada.
+A vistoria da **Bomba 02** leva o jogador à nave antes e depois de rearmar o quadro geral. A Presença surge em mais momentos da expedição. Faixas e indicações nas curvas orientam o caminho dentro do alcance da lanterna. [Aparições e capturas](docs/PRESENCA.md)
+
+O corredor leva à **Estação de Bombeamento 07**, com 15 setores, rotas laterais e cerca de 6.100 m² de planta. A tecla **F4** alterna o VHS entre suave, forte e desligado. O menu da pausa também oferece controle do VHS e do volume. [Detalhes do mapa](docs/ESTACAO-07.md)
 
 Protótipo real para Windows, feito em Rust + Bevy. Direção: usuário. Programação: IA, com decisões registradas aqui. PC primeiro; Android e LAN depois.
 
 ## Jogar
 
-Abra **JOGAR.cmd**. Quando a pasta `windows` estiver presente, ele abre o executável pronto, sem Cargo e sem internet. Para acompanhar e salvar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
+Abra **JOGAR.cmd** para iniciar `windows/ainda-vivo-v0.0.7.exe` offline. Para acompanhar e salvar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
 
 Sem executável pronto, o mesmo atalho compila e executa. A primeira compilação baixa as bibliotecas oficiais do motor; não baixa modelos, texturas, áudio ou pacotes de jogo. Compilações seguintes reaproveitam o cache.
 
-No menu, clique em **INICIAR EXPEDIÇÃO** ou aperte **Enter**. Encontre o fusível na mesa da sala à esquerda, mire nele e use E. Leve-o ao quadro elétrico no fim do corredor, use E e atravesse a saída. A sala à direita tem um registro opcional. O cenário é provisório, sem relação com um local real.
+No menu, clique em **INICIAR EXPEDIÇÃO** ou pressione **Enter**. Pegue o fusível na oficina à esquerda. Use **E** no manômetro da **Bomba 02**, siga as indicações de **ELÉTRICA** e rearme o quadro geral. Volte à mesma bomba para registrar a segunda leitura e liberar a comporta. A saída fica depois da bacia de decantação. O Arquivo e a sala de Controle guardam registros opcionais.
 
 | Controle | Ação |
 |---|---|
@@ -23,16 +25,17 @@ No menu, clique em **INICIAR EXPEDIÇÃO** ou aperte **Enter**. Encontre o fusí
 | Esc | Pausar/continuar e liberar o mouse |
 | Enter | Iniciar/continuar |
 | F3 | Mostrar/ocultar FPS e diagnóstico |
+| F4 | Alternar o modo VHS |
 
 O jogo pausa ao perder o foco. Fechar a janela encerra o programa. O menu permite reiniciar, ajustar sensibilidade e campo de visão e alternar VSync e balanço.
 
 ## Conforto e desempenho
 
 - Balanço desligado por padrão. A opção suave desloca a câmera verticalmente em no máximo 6 mm; não inclina o horizonte.
-- Sem motion blur, distorção de lente, aberração cromática, granulação, flashes ou mudança de FOV ao correr. O estilo de gravação usa enquadramento, luz e interface.
+- O VHS simula granulação fina, linhas de fita, separação discreta de cor e leve deslocamento horizontal no rodapé. O efeito age na cena 3D, com o HUD e o menu legíveis. O modo desligado remove o passe gráfico.
 - Campo de visão **vertical** ajustável de 55° a 80°; inicial 65°. Sensibilidade ajustável no menu. Preferências são salvas automaticamente.
 - Física fixa em 60 Hz, interpolação visual e aceleração suave. VSync ligado inicialmente; FPS desbloqueável no menu.
-- Janela inicial de 1280 × 720, redimensionável. Uma lanterna com sombras, cinco lâmpadas simples e materiais locais.
+- Janela inicial de 1280 × 720, redimensionável. Lanterna com sombras, luminárias locais e texturas procedurais.
 - Referência de direção: Ryzen 5 5600G, GTX 1660 Super, 16 GB. Não é uma garantia de FPS; medições reais ficam em `docs/VALIDACAO.md`.
 
 ## Desenvolvimento
@@ -66,11 +69,11 @@ cargo fmt --all -- --check
 cargo clippy --workspace --all-targets --locked -- -D warnings
 ```
 
-Bevy está fixado em **0.18.1**, compatível com o compilador verificado; o `Cargo.lock` fixa o restante. Atualizações de motor devem ser deliberadas e testadas. Áudio, glTF, gamepad, rede, HTTP e decodificadores desnecessários estão desativados. O jogo funciona offline após a compilação e não envia telemetria.
+Bevy está fixado em **0.18.1**, com as dependências travadas no `Cargo.lock`. O áudio é sintetizado localmente, as texturas são procedurais e o efeito VHS é incorporado no executável. O jogo funciona offline após a compilação.
 
 ## Escopo e limitações
 
-Esta é uma prova de jogabilidade, não a campanha. Inclui exploração, corrida/agachamento/pulo, colisões, lanterna, interação, objetivo curto, menu, pausa e diagnóstico. A Presença é apenas uma silhueta distante e estática que aparece durante uma etapa da exploração. Não tem IA, ataque ou morte. Não há áudio nesta versão.
+O protótipo inclui exploração em primeira pessoa, uma vistoria completa com ida e volta, registros opcionais, menu, pausa e diagnóstico. A Presença surge em momentos e locais ligados ao percurso. A câmera fixa da nave produz um quadro que pode ser consultado em um terminal da sala de Controle.
 
 O controlador usa uma caixa cinemática de 54 cm de largura contra caixas estáticas alinhadas aos eixos, com varredura contínua e deslizamento. Não é uma simulação de corpos rígidos: não suporta rampas, escadas automáticas, empurrar objetos, plataformas móveis ou colisores rotacionados. Não inserir essas geometrias sem ampliar e testar a física. Agachar mantém os pés no chão e impede levantar dentro de uma travessa baixa.
 

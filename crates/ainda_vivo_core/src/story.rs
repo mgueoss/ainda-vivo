@@ -1,44 +1,122 @@
-/// Small prototype loop. Not the final campaign or creature AI.
+/// The maintenance inspection and the few controls the operator can use.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Action {
     TakeFuse,
+    InspectPump,
     RestorePower,
     ReadNote,
+    ReadArchive,
+    ReviewRecording,
+    CheckGate,
+}
+
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
+pub enum Phase {
+    #[default]
+    Fuse,
+    Baseline,
+    Electrical,
+    Return,
+    Exit,
 }
 
 #[derive(Clone, Debug, Default)]
 pub struct Progress {
-    pub has_fuse: bool,
-    pub power_restored: bool,
-    pub note_read: bool,
+    phase: Phase,
+    recording_reviewed: bool,
 }
 
 impl Progress {
+    pub fn phase(&self) -> Phase {
+        self.phase
+    }
+
+    pub fn has_fuse(&self) -> bool {
+        self.phase >= Phase::Baseline
+    }
+
+    pub fn power_restored(&self) -> bool {
+        self.phase >= Phase::Return
+    }
+
+    pub fn exit_unlocked(&self) -> bool {
+        self.phase == Phase::Exit
+    }
+
+    pub fn recording_reviewed(&self) -> bool {
+        self.recording_reviewed
+    }
+
+    pub fn prompt(&self, action: Action) -> Option<&'static str> {
+        Some(match action {
+            Action::TakeFuse if self.has_fuse() => return None,
+            Action::TakeFuse => "recolher fusível",
+            Action::InspectPump if self.phase == Phase::Return => "registrar leitura de retorno",
+            Action::InspectPump if self.phase >= Phase::Electrical => "conferir manômetro",
+            Action::InspectPump => "registrar pressão na Bomba 02",
+            Action::RestorePower if self.power_restored() => return None,
+            Action::RestorePower => "rearmar quadro geral",
+            Action::ReadNote => "ler ordem de vistoria",
+            Action::ReadArchive => "ler ocorrência da Bomba 02",
+            Action::ReviewRecording => "consultar gravação da nave",
+            Action::CheckGate if self.exit_unlocked() => return None,
+            Action::CheckGate => "conferir trava da comporta",
+        })
+    }
+
     pub fn apply(&mut self, action: Action) -> &'static str {
-        match action {
-            Action::TakeFuse => {
-                self.has_fuse = true;
-                "Fusível recolhido. O quadro elétrico fica no fim do corredor."
+        match (action, self.phase) {
+            (Action::TakeFuse, Phase::Fuse) => {
+                self.phase = Phase::Baseline;
+                "Fusível recolhido."
             }
-            Action::RestorePower if self.has_fuse => {
-                self.power_restored = true;
-                "Energia restaurada. A saída está aberta. Continue em frente."
+            (Action::TakeFuse, _) => "O fusível já foi recolhido.",
+            (Action::InspectPump, Phase::Fuse) => "A equipe deixou o fusível na oficina.",
+            (Action::InspectPump, Phase::Baseline) => {
+                self.phase = Phase::Electrical;
+                "Pressão de repouso em zero. Lacre intacto."
             }
-            Action::RestorePower => "Falta um fusível. Procure na sala à esquerda.",
-            Action::ReadNote => {
-                self.note_read = true;
-                "REGISTRO 01: Se o corredor parecer diferente, respire. Não siga a sombra."
+            (Action::InspectPump, Phase::Electrical) => "Pressão de repouso já registrada.",
+            (Action::RestorePower, Phase::Fuse) => "Falta o fusível da oficina.",
+            (Action::RestorePower, Phase::Baseline) => {
+                "O quadro pede a leitura inicial da Bomba 02."
             }
+            (Action::RestorePower, Phase::Electrical) => {
+                self.phase = Phase::Return;
+                "Rede rearmada. A trava aguarda a leitura de retorno."
+            }
+            (Action::RestorePower, _) => "O quadro já tem energia.",
+            (Action::InspectPump, Phase::Return) => {
+                self.phase = Phase::Exit;
+                "Pressão acima da faixa. Lacre intacto. Comporta liberada."
+            }
+            (Action::InspectPump, Phase::Exit) => "A leitura de retorno ficou registrada.",
+            (Action::ReadNote, _) => {
+                "Ordem 07. A Bomba 02 está isolada desde o último turno. Compare as leituras antes e depois do rearme."
+            }
+            (Action::ReadArchive, _) => {
+                "Ocorrência 04. O turno anterior descreveu três pancadas na Bomba 02. A carcaça estava vazia na inspeção."
+            }
+            (Action::ReviewRecording, Phase::Fuse | Phase::Baseline | Phase::Electrical) => {
+                "O gravador ainda depende do quadro geral."
+            }
+            (Action::ReviewRecording, _) => {
+                self.recording_reviewed = true;
+                "Câmera da nave. Quadro arquivado no momento da leitura inicial."
+            }
+            (Action::CheckGate, Phase::Return) => "A trava pede a leitura de retorno na Bomba 02.",
+            (Action::CheckGate, Phase::Exit) => "Comporta liberada.",
+            (Action::CheckGate, _) => "A comporta aguarda o rearme e a vistoria da Bomba 02.",
         }
     }
 
     pub fn objective(&self) -> &'static str {
-        if self.power_restored {
-            "Atravesse a saída iluminada no fim do corredor."
-        } else if self.has_fuse {
-            "Leve o fusível ao quadro elétrico no fim do corredor."
-        } else {
-            "Encontre o fusível na sala à esquerda do corredor."
+        match self.phase {
+            Phase::Fuse => "Pegue o fusível na oficina à esquerda.",
+            Phase::Baseline => "Vá à nave e registre o manômetro da Bomba 02.",
+            Phase::Electrical => "Siga as setas âmbar até o quadro geral.",
+            Phase::Return => "Volte à Bomba 02 para registrar a segunda leitura.",
+            Phase::Exit => "Contorne a bacia de decantação e atravesse a saída.",
         }
     }
 }
@@ -47,14 +125,38 @@ impl Progress {
 mod tests {
     use super::*;
     #[test]
-    fn exit_requires_fuse_and_reset_restores_objective() {
+    fn inspection_requires_both_readings_and_rearm_in_order() {
         let mut p = Progress::default();
+        p.apply(Action::InspectPump);
         p.apply(Action::RestorePower);
-        assert!(!p.power_restored);
+        assert_eq!(p.phase(), Phase::Fuse);
         p.apply(Action::TakeFuse);
         p.apply(Action::RestorePower);
-        assert!(p.power_restored);
-        p = Progress::default();
-        assert!(!p.has_fuse && !p.power_restored && !p.note_read);
+        assert!(!p.power_restored());
+        p.apply(Action::InspectPump);
+        p.apply(Action::InspectPump);
+        assert_eq!(p.phase(), Phase::Electrical);
+        p.apply(Action::RestorePower);
+        p.apply(Action::CheckGate);
+        assert!(p.power_restored() && !p.exit_unlocked());
+        p.apply(Action::InspectPump);
+        p.apply(Action::TakeFuse);
+        assert!(p.exit_unlocked());
+        assert!(p.prompt(Action::CheckGate).is_none());
+    }
+
+    #[test]
+    fn optional_recording_and_reading_do_not_advance_the_objective() {
+        let mut p = Progress::default();
+        p.apply(Action::ReadArchive);
+        p.apply(Action::ReviewRecording);
+        assert!(!p.recording_reviewed());
+        p.apply(Action::TakeFuse);
+        p.apply(Action::InspectPump);
+        p.apply(Action::RestorePower);
+        p.apply(Action::ReviewRecording);
+        assert!(p.recording_reviewed());
+        assert_eq!(p.phase(), Phase::Return);
+        assert!(!Progress::default().recording_reviewed());
     }
 }

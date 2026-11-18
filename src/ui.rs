@@ -15,6 +15,10 @@ pub enum MenuAction {
     FovUp,
     SensDown,
     SensUp,
+    SoundDown,
+    SoundUp,
+    SoundMute,
+    Vhs,
     Quit,
 }
 
@@ -93,15 +97,16 @@ pub fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
         Node { width: percent(92), max_width: px(660), padding: UiRect::all(px(24)),
             flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },
         children![
-            style.text("●  REGISTRO EXPERIMENTAL  /  v0.0.2", 13.0, Color::srgb(0.70, 0.31, 0.25)),
+            style.text(concat!("●  REGISTRO EXPERIMENTAL  /  v", env!("CARGO_PKG_VERSION")), 13.0, Color::srgb(0.70, 0.31, 0.25)),
             (style.text("AINDA VIVO", 52.0, INK), TextRole::Heading),
-            (style.text("Não siga a sombra.", 17.0, MUTED), TextRole::Subtitle),
+            (style.text("Estação 07 · Vistoria noturna", 17.0, MUTED), TextRole::Subtitle),
             style.text("WASD  mover    MOUSE  olhar    SHIFT  correr    CTRL/C  agachar\nE  interagir    F  lanterna    ESPAÇO  pular    ESC  pausar    F3  diagnóstico", 14.0, MUTED),
             style.button(MenuAction::Main, "INICIAR EXPEDIÇÃO   [ENTER]", false),
             style.button(MenuAction::Restart, "REINICIAR EXPEDIÇÃO", true),
             (Node { column_gap: px(8), ..default() }, children![
                 style.button(MenuAction::Bodycam, "BALANÇO: DESLIGADO", true),
                 style.button(MenuAction::Vsync, "VSYNC: LIGADO", true),
+                style.button(MenuAction::Vhs, "VHS: SUAVE  [F4]", true),
             ]),
             (style.text("", 14.0, MUTED), TextRole::Settings),
             (Node { column_gap: px(8), ..default() }, children![
@@ -110,8 +115,12 @@ pub fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
                 style.button(MenuAction::SensDown, "MOUSE −", true),
                 style.button(MenuAction::SensUp, "MOUSE +", true),
             ]),
+            (Node { column_gap: px(8), ..default() }, children![
+                style.button(MenuAction::SoundDown, "SOM −", true),
+                style.button(MenuAction::SoundMute, "AMBIÊNCIA", true),
+                style.button(MenuAction::SoundUp, "SOM +", true),
+            ]),
             style.button(MenuAction::Quit, "SAIR", true),
-            style.text("Um corredor. Um fusível. Uma saída.\nProtótipo solo • sem áudio e sem sustos bruscos • conforto primeiro", 13.0, MUTED),
         ]
     )]));
     commands.spawn((
@@ -154,45 +163,33 @@ pub fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
                 }
             ),
             (
-                style.text("", 16.0, INK),
-                TextRole::Objective,
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: px(26),
-                    bottom: px(85),
-                    max_width: percent(85),
-                    ..default()
-                }
-            ),
-            (
-                style.text("", 18.0, Color::srgb(0.93, 0.77, 0.43)),
-                TextRole::Prompt,
-                Node {
-                    position_type: PositionType::Absolute,
-                    left: percent(36),
-                    top: percent(62),
-                    ..default()
-                }
-            ),
-            (
-                style.text("", 16.0, INK),
-                TextRole::Message,
                 Node {
                     position_type: PositionType::Absolute,
                     left: px(26),
                     right: px(26),
-                    bottom: px(52),
+                    bottom: px(24),
+                    flex_direction: FlexDirection::Column,
+                    row_gap: px(10),
                     ..default()
-                }
+                },
+                children![
+                    (style.text("", 16.0, INK), TextRole::Objective),
+                    (style.text("", 16.0, MUTED), TextRole::Message),
+                    style.text("E  INTERAGIR     F  LANTERNA     ESC  PAUSA", 12.0, MUTED),
+                ],
             ),
             (
-                style.text("E  INTERAGIR     F  LANTERNA     ESC  PAUSA", 12.0, MUTED),
                 Node {
                     position_type: PositionType::Absolute,
-                    left: px(26),
-                    bottom: px(24),
+                    width: percent(100),
+                    top: percent(70),
+                    justify_content: JustifyContent::Center,
                     ..default()
-                }
+                },
+                children![(
+                    style.text("", 17.0, Color::srgb(0.93, 0.77, 0.43)),
+                    TextRole::Prompt,
+                )],
             ),
         ],
     ));
@@ -229,6 +226,15 @@ pub fn buttons(
                 comfort.sensitivity = (comfort.sensitivity - 0.0002).max(0.0004)
             }
             MenuAction::SensUp => comfort.sensitivity = (comfort.sensitivity + 0.0002).min(0.004),
+            MenuAction::SoundDown => {
+                comfort.ambience_volume = (comfort.ambience_volume - 0.10).max(0.0);
+            }
+            MenuAction::SoundUp => {
+                comfort.ambience_volume = (comfort.ambience_volume + 0.10).min(1.0);
+                comfort.ambience_muted = false;
+            }
+            MenuAction::SoundMute => comfort.ambience_muted = !comfort.ambience_muted,
+            MenuAction::Vhs => comfort.vhs = comfort.vhs.next(),
             MenuAction::Quit => {
                 exit.write(AppExit::Success);
             }
@@ -261,12 +267,11 @@ pub fn refresh(
                 _ => "AINDA VIVO".into(),
             },
             TextRole::Subtitle => match session.screen {
-                Screen::Complete => format!(
-                    "Saída alcançada em {:.0}s. O registro continua na próxima versão.",
-                    session.elapsed
-                ),
+                Screen::Complete => {
+                    "Vistoria arquivada. A câmera da nave continua gravando.".into()
+                }
                 Screen::Paused => "Respire. O corredor pode esperar.".into(),
-                _ => "Não siga a sombra.".into(),
+                _ => "Estação 07 · Vistoria noturna".into(),
             },
             TextRole::Button(action) => match action {
                 MenuAction::Main => if session.screen == Screen::Paused {
@@ -287,6 +292,11 @@ pub fn refresh(
                     "VSYNC: {}",
                     if comfort.vsync { "LIGADO" } else { "DESLIGADO" }
                 ),
+                MenuAction::SoundMute if comfort.ambience_muted => "SOM MUDO  ·  ATIVAR".into(),
+                MenuAction::SoundMute => {
+                    format!("SOM {:.0}%  ·  SILENCIAR", comfort.ambience_volume * 100.0)
+                }
+                MenuAction::Vhs => format!("VHS: {}  [F4]", comfort.vhs.label()),
                 _ => continue,
             },
             TextRole::Settings => format!(

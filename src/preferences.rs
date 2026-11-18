@@ -52,6 +52,19 @@ impl Preferences {
                     "bodycam" => comfort.bodycam = value == "true",
                     "vsync" => comfort.vsync = value != "false",
                     "diagnostics" => comfort.diagnostics = value != "false",
+                    "ambience_volume" => {
+                        if let Ok(volume) = value.parse::<f32>()
+                            && volume.is_finite()
+                        {
+                            comfort.ambience_volume = volume.clamp(0.0, 1.0);
+                        }
+                    }
+                    "ambience_muted" => comfort.ambience_muted = value == "true",
+                    "vhs" => {
+                        if let Some(mode) = crate::vhs::VhsMode::parse(value) {
+                            comfort.vhs = mode;
+                        }
+                    }
                     _ => {
                         if let Some(action) = name.strip_prefix("key.")
                             && let Some(key) = parse_key(value)
@@ -106,12 +119,15 @@ pub fn save(comfort: Res<Comfort>, mut preferences: ResMut<Preferences>) {
         return;
     };
     let mut content = format!(
-        "# AINDA VIVO - preferencias locais\nsensitivity={}\nfov={}\nbodycam={}\nvsync={}\ndiagnostics={}\n",
+        "# AINDA VIVO - preferencias locais\nsensitivity={}\nfov={}\nbodycam={}\nvsync={}\ndiagnostics={}\nambience_volume={:.2}\nambience_muted={}\nvhs={}\n",
         comfort.sensitivity,
         comfort.fov_degrees,
         comfort.bodycam,
         comfort.vsync,
-        comfort.diagnostics
+        comfort.diagnostics,
+        comfort.ambience_volume,
+        comfort.ambience_muted,
+        comfort.vhs.setting(),
     );
     for (action, fallback, label) in [
         ("forward", KeyCode::KeyW, "W"),
@@ -172,7 +188,7 @@ mod tests {
     #[test]
     fn settings_round_trip_preserves_preferences_and_bindings() {
         let path = path();
-        std::fs::write(&path, "fov=75\nsensitivity=0.0024\nbodycam=true\nvsync=false\nkey.forward=Up\nkey.interact=Q\n").unwrap();
+        std::fs::write(&path, "fov=75\nsensitivity=0.0024\nbodycam=true\nvsync=false\nambience_volume=0.42\nambience_muted=true\nvhs=off\nkey.forward=Up\nkey.interact=Q\n").unwrap();
         let (preferences, comfort) = Preferences::load_from(Some(path.clone()));
         let mut app = App::new();
         app.insert_resource(preferences)
@@ -183,6 +199,9 @@ mod tests {
         assert_eq!(comfort.fov_degrees, 75.0);
         assert_eq!(comfort.sensitivity, 0.0024);
         assert!(comfort.bodycam && !comfort.vsync);
+        assert!(comfort.ambience_muted);
+        assert_eq!(comfort.ambience_volume, 0.42);
+        assert_eq!(comfort.vhs, crate::vhs::VhsMode::Off);
         assert_eq!(loaded.key("forward", KeyCode::KeyW), KeyCode::ArrowUp);
         assert_eq!(loaded.key("interact", KeyCode::KeyE), KeyCode::KeyQ);
         std::fs::remove_file(path).unwrap();
@@ -199,6 +218,7 @@ mod tests {
         let (loaded, comfort) = Preferences::load_from(Some(path.clone()));
         assert_eq!(comfort.fov_degrees, 80.0);
         assert_eq!(comfort.sensitivity, Comfort::default().sensitivity);
+        assert_eq!(comfort.ambience_volume, Comfort::default().ambience_volume);
         assert_eq!(loaded.key("forward", KeyCode::KeyW), KeyCode::KeyW);
         std::fs::remove_file(path).unwrap();
     }

@@ -1,5 +1,25 @@
 # Validação — 17/11/2026
 
+## v0.0.7 — Vistoria da Bomba 02
+
+- Compilação offline, rustfmt e Clippy com `-D warnings` aprovados. Os 25 testes passaram.
+- O teste gráfico de 5.160 quadros percorreu a ida à Bomba 02, o quadro da Elétrica, a volta à bomba e a saída pela Decantação. A comporta ficou trancada durante o rearme e abriu depois da segunda leitura. O teste também conferiu os 15 setores, 22 passagens e a posição do ponteiro nas duas leituras.
+- Dez linhas de visão foram verificadas. Cinco aparições ficaram enquadradas durante a expedição automatizada. As capturas mostram a travessia da passarela com VHS suave, o rastro na água e o quadro arquivado no monitor. O reinício limpou os estados da vistoria e do gravador.
+- A execução gráfica rodou na GTX 1660 Super via Vulkan. Foi confirmada a reprodução das pancadas da bomba, do arrasto no corrimão e de quatro tipos de ruído de fundo. [Relatório da execução](smoke-report-v0.0.7.txt) · [Capturas e referências](PRESENCA.md)
+
+## v0.0.6 — Visibilidade, aparições e detalhes da estação
+
+- Compilação offline e Clippy com `-D warnings` aprovados. Os 22 testes do projeto passaram.
+- O teste gráfico completou 4.000 quadros na GTX 1660 Super via Vulkan. Conferiu todas as 22 passagens, seis linhas de visão da Presença, uma aparição durante o percurso, o tempo de leitura sob o olhar direto, o movimento dos exaustores e das peças penduradas, a pausa e a reação do quadro geral à restauração da energia.
+- Nas capturas do mesmo enquadramento com VHS suave, o vulto aparece sobre o fundo iluminado e desaparece após a espera. Na nave, o feixe torna o piso próximo legível enquanto o fundo some. Os quadros do exaustor mostram as pás em duas posições. [Relatório da execução](smoke-report-v0.0.6.txt) · [Capturas](PRESENCA.md)
+
+## v0.0.5 — A Presença, lanterna e áudio
+
+- Compilação offline, rustfmt e Clippy com `-D warnings` aprovados. Os 21 testes do projeto passaram.
+- O percurso gráfico de 3.800 quadros passou no Windows com a GTX 1660 Super via Vulkan. O teste concluiu a expedição e conferiu as 22 passagens do mapa e as linhas de visão dos cinco pontos de aparição.
+- A Presença apareceu durante o percurso. Uma segunda tentativa conferiu que o vulto surge à distância, se dissolve sob o olhar e deixa o mesmo cenário à vista. O teste comparou a lanterna ligada e desligada no mesmo enquadramento.
+- A reprodução de três tipos distintos de ruídos ocasionais foi confirmada durante a execução. O teste também conferiu a pausa do áudio e o retorno da oficina. [Relatório da execução](smoke-report-v0.0.5.txt) · [Capturas e decisões](PRESENCA.md)
+
 ## Ambiente verificado
 
 - Windows x64, alvo `x86_64-pc-windows-msvc`.

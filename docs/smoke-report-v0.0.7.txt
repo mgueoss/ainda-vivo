@@ -1,0 +1,11 @@
+AINDA VIVO v0.0.7
+render/integration smoke: PASS
+frames: 5160
+map audit: 15 sectors, 22 bidirectional portals
+presence: 10 valid sightlines, 5 framed sightings on the main route, walkway crossing: true
+checks: workshop cue, collision and pause, fuse, first pump reading, outside-wall ray, rearm, locked gate, pressure needle, second reading, full walking route, exit, optional monitor, restart, direct-gaze hold and close flashlight
+basin ripple: true
+audio device checked: true
+distinct incidental sounds: 4
+inspection and basin sounds played: 2 of 2
+failures: []
