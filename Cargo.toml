@@ -1,0 +1,45 @@
+[package]
+name = "ainda-vivo"
+version = "0.0.4"
+edition = "2024"
+rust-version = "1.89"
+publish = false
+description = "AINDA VIVO — protótipo Windows em primeira pessoa"
+
+[workspace]
+members = ["crates/ainda_vivo_core"]
+resolver = "3"
+
+[dependencies]
+ainda_vivo_core = { path = "crates/ainda_vivo_core" }
+bevy = { version = "=0.18.1", default-features = false, features = [
+    "std", "async_executor", "multi_threaded", "bevy_asset", "bevy_log",
+    "bevy_window", "bevy_winit", "keyboard", "mouse", "bevy_color",
+    "bevy_camera", "bevy_light", "bevy_mesh", "bevy_image", "bevy_shader",
+    "bevy_render", "bevy_core_pipeline", "bevy_pbr", "bevy_text",
+    "bevy_ui", "bevy_ui_render", "default_font", "tonemapping_luts", "zstd_rust",
+    "bevy_audio"
+] }
+
+[profile.dev]
+opt-level = 1
+debug = 0
+incremental = false
+
+[profile.dev.package."*"]
+opt-level = 2
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+strip = "debuginfo"
+
+[profile.test]
+opt-level = 1
+debug = 0
+
+[[bin]]
+name = "ainda-vivo"
+path = "src/main.rs"
+test = true
+bench = false
