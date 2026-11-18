@@ -1,4 +1,25 @@
-# Validação — 17/11/2026
+# Validação — 18/11/2026
+
+## v0.0.8 — Além da Escuridão
+
+Rust/Cargo 1.97.1, Windows x64 MSVC, Bevy 0.18.1 e NVIDIA GeForce GTX 1660 SUPER com driver 610.88 via Vulkan. A validação reutilizou o cache na unidade D: e compilou em modo offline. O executável distribuído usa o perfil de desenvolvimento otimizado do projeto, com símbolos de depuração desativados.
+
+| Verificação | Resultado |
+|---|---|
+| `cargo fmt --all -- --check` | Aprovado |
+| `cargo clippy --locked --offline --workspace --all-targets -j 2 -- -D warnings` | Aprovado |
+| `cargo test --locked --offline --workspace -j 2` | 29 aprovados, 0 falhas. São 16 no aplicativo e 13 no núcleo. |
+| `cargo build --locked --offline -j 2` | Aprovado. O build final usou 45,41 s com o cache disponível. |
+| Smoke nativo com `--check-audio` e capturas | PASS em 12.260 quadros de teste, 21 capturas, 0 falhas. |
+
+- **Missão.** O script caminhou pelos trechos da ida à Bomba 02, da Elétrica, da volta à bomba e da Decantação. Conferiu pressão e trava, pausa, colisão, agachamento, interação, lanterna e reinício. A auditoria percorreu 15 setores, 22 portais bidirecionais e dez linhas de visão das aparições.
+- **Presença e diretor.** Quatro pontos ficaram enquadrados na rota principal, incluindo a travessia da passarela registrada com VHS suave. Um enquadramento dedicado conferiu permanência sob o olhar direto e desaparecimento após virar. A primeira tentativa completa, incluindo as etapas focadas depois da rota, registrou cinco aparições, dois incidentes sonoros, uma ilusão, cinco janelas expiradas sem evento, nove adiamentos e cinco revisitas. Os quatro modos ocorreram.
+- **Ilusões e registros.** A ficha mudou de pose depois de o jogador virar e voltou à pose original no reinício. O indicador do Controle alterou material fora do enquadramento. O teste leu o livro de ponto e a ocorrência do Arquivo via interação real, e recuperou a gravação da nave.
+- **Áudio.** O dispositivo padrão abriu e as vozes avançaram durante as cenas. O teste confirmou três tipos distintos de ruído incidental, o retorno da oficina e os dois sons autorais da Bomba 02 e Decantação. Volume percebido e identificação da origem ainda dependem de escuta humana.
+
+O smoke usa semente fixa, simula a entrada, reposiciona o jogador em pontos específicos e controla o tempo de simulação. Os valores de FPS das capturas não são medições de desempenho. Nenhum FPS mínimo ou ganho percentual de desempenho foi aferido. Sensibilidade do mouse, conforto e impacto do terror ainda precisam de sessão livre com o diretor.
+
+[Relatório bruto](smoke-report-v0.0.8.txt) · [Travessia na passarela](imagens/v0.0.8/passarela-vulto.png) · [Ficha original](imagens/v0.0.8/ficha-antes.png) · [Ficha deslocada](imagens/v0.0.8/ficha-depois.png) · [Indicador original](imagens/v0.0.8/ramal-antes.png) · [Indicador aceso](imagens/v0.0.8/ramal-depois.png) · [Nave sem VHS](imagens/v0.0.8/nave-alcance.png)
 
 ## v0.0.7 — Vistoria da Bomba 02
 

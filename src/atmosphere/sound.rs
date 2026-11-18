@@ -1,4 +1,7 @@
-use super::{Atmosphere, DUCT, PUMP_KNOCK, WORKSHOP_ECHO, WORKSHOP_HUM};
+use super::{
+    Atmosphere, DUCT, PUMP_KNOCK, WORKSHOP_ECHO, WORKSHOP_HUM,
+    director::{Cue, Director},
+};
 use crate::app::{CollisionWorld, Comfort, LocalPlayer, MainCamera, Screen, Session};
 use crate::scene::presence::Presence;
 use bevy::{audio::AudioSinkPlayback, prelude::*};
@@ -15,7 +18,7 @@ use spatial::{MixTarget, RATE, channels};
 pub struct SoundBank {
     echo: Arc<[f32]>,
     shoes: [Arc<[f32]>; 3],
-    incidents: [Arc<[f32]>; Kind::ALL.len()],
+    incidents: [[Arc<[f32]>; 3]; Kind::ALL.len()],
     pump_knocks: Arc<[f32]>,
     rail_scrape: Arc<[f32]>,
 }
@@ -77,24 +80,27 @@ pub fn setup(mut commands: Commands, mut audio: ResMut<Assets<Voice>>) {
         ballast * sway + noise.band * 0.095
     });
     let ventilation = loop_clip(12.0, 191, |t, noise| {
-        let blades = tone(t, 52.0) * 0.06 + tone(t, 104.0) * 0.032;
-        (0.73 + 0.18 * tone(t, 7.0) + 0.09 * tone(t, 1.25))
-            * (blades + noise.low * 0.53 + noise.band * 0.075)
+        let blades = tone(t, 52.0) * 0.041 + tone(t, 103.75) * 0.021;
+        (0.76 + 0.12 * tone(t, 6.83) + 0.11 * tone(t, 1.25))
+            * (blades + noise.low * 0.42 + noise.band * 0.093)
     });
     let pumps = loop_clip(16.0, 449, |t, noise| {
         let beat = 0.64 + tone(t, 0.375) * 0.21 + tone(t, 0.625) * 0.15;
-        beat * (tone(t, 53.0) * 0.069
+        beat * (tone(t, 53.0) * 0.058
             + tone(t, 106.0) * 0.038
             + tone(t, 211.75) * 0.019
-            + noise.low * 0.46)
+            + noise.low * 0.42
+            + noise.band * 0.026)
     });
-    let drain = loop_clip(16.0, 982, |t, noise| {
+    let drain = loop_clip(19.0, 982, |t, noise| {
         let air = (0.74 + tone(t, 0.4375) * 0.15) * (noise.low * 0.37 + noise.band * 0.128);
         let mut drops = 0.0;
         for (start, hz, gain) in [
             (2.29, 420.0, 0.073),
             (7.85, 381.0, 0.061),
             (12.51, 374.0, 0.076),
+            (13.05, 378.0, 0.036),
+            (17.27, 563.0, 0.042),
         ] {
             let age = t - start;
             if (0.0..0.48).contains(&age) {
@@ -141,7 +147,7 @@ pub fn setup(mut commands: Commands, mut audio: ResMut<Assets<Voice>>) {
     commands.insert_resource(SoundBank {
         echo,
         shoes,
-        incidents: Kind::ALL.map(Kind::clip),
+        incidents: Kind::ALL.map(|kind| std::array::from_fn(|index| kind.clip(index))),
         pump_knocks,
         rail_scrape,
     });
@@ -312,6 +318,7 @@ pub fn emit_incidents(
     listener: Query<&Transform, With<MainCamera>>,
     bank: Res<SoundBank>,
     mut schedule: Local<IncidentSchedule>,
+    mut director: ResMut<Director>,
 ) {
     schedule.reset(session.attempt, time.elapsed().as_millis() as u32);
     if session.screen != Screen::Playing {
@@ -321,18 +328,20 @@ pub fn emit_incidents(
         schedule.defer_until(session.elapsed + 2.0);
         return;
     }
-    if let Ok(camera) = listener.single()
+    if director.allows(Cue::Sound, session.elapsed)
+        && let Ok(camera) = listener.single()
         && let Some((kind, position)) = schedule.next(session.elapsed, camera)
     {
         one_shot(
             &mut commands,
             &mut audio,
             &session,
-            bank.incidents[kind as usize].clone(),
+            bank.incidents[kind as usize][director.order % 3].clone(),
             Sound::Incident(kind),
             position,
             kind.duration() + 0.45,
         );
+        director.claim(Cue::Sound, session.elapsed);
     }
 }
 
@@ -352,7 +361,7 @@ type AudioEmitters<'w, 's> = Query<
 pub fn mix(
     mut commands: Commands,
     session: Res<Session>,
-    scene: Res<Atmosphere>,
+    (scene, director): (Res<Atmosphere>, Res<Director>),
     comfort: Res<Comfort>,
     world: Res<CollisionWorld>,
     listener: Query<&Transform, With<MainCamera>>,
@@ -395,10 +404,15 @@ pub fn mix(
                 Sound::Room => {
                     0.48 * (1.0 - 0.76 * scene.quiet)
                         * (1.0 - 0.26 * scene.relief)
+                        * (1.0 - 0.65 * director.hush)
                         * (1.0 - 0.70 * scene.episode.pump_hush.max(scene.episode.rail_hush))
                 }
                 Sound::Electricity => 0.77 * (1.0 - 0.90 * scene.quiet),
-                Sound::AirDuct => 0.42 * (1.0 - 0.47 * scene.quiet) * (1.0 + 0.42 * scene.relief),
+                Sound::AirDuct => {
+                    0.42 * (1.0 - 0.47 * scene.quiet)
+                        * (1.0 + 0.42 * scene.relief)
+                        * (1.0 - 0.32 * director.hush)
+                }
                 Sound::PumpHall => {
                     0.53 * (0.78 + scene.relief * 0.22) * (1.0 - 0.91 * scene.episode.pump_hush)
                 }
@@ -466,9 +480,12 @@ fn shoe(time: f32, noise: Noise, hz: f32) -> f32 {
     }
     let attack = (time / 0.026).clamp(0.0, 1.0).powi(2);
     let tail = ((0.32 - time) / 0.07).min(1.0);
-    let impact = (tone(time, hz) * 0.44 + tone(time, hz * 1.87) * 0.16) * (-23.0 * time).exp();
-    let scuff = (noise.band * 0.74 + noise.low * 0.22) * (-12.5 * time).exp();
-    attack * tail * (impact + scuff)
+    let impact =
+        (tone(time, hz - time * 64.0) * 0.33 + tone(time, hz * 1.82) * 0.084 + noise.low * 0.21)
+            * (-23.0 * time).exp();
+    let scuff = (noise.band * 0.65 + noise.low * 0.23) * (-13.0 * time).exp();
+    let roll = ((time - 0.058) / 0.075).clamp(0.0, 1.0);
+    attack * tail * (impact + scuff + roll * noise.band * (-9.0 * time).exp() * 0.15)
 }
 
 fn samples(seconds: f32, mut seed: u32, mut shape: impl FnMut(f32, Noise) -> f32) -> Vec<f32> {

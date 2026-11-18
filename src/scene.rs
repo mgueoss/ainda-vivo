@@ -3,6 +3,7 @@ use ainda_vivo_core::{collision::Aabb, movement::SPAWN, story::Action};
 use bevy::{core_pipeline::tonemapping::Tonemapping, prelude::*};
 
 mod dressing;
+pub mod illusion;
 pub mod presence;
 pub mod recording;
 pub mod station;
@@ -241,9 +242,9 @@ pub fn setup(
         Flashlight,
         SpotLight {
             color: Color::srgb(1.0, 0.956, 0.858),
-            intensity: 330_000.0,
-            range: 15.5,
-            inner_angle: 0.24,
+            intensity: 345_000.0,
+            range: 15.1,
+            inner_angle: 0.22,
             outer_angle: 0.51,
             shadows_enabled: true,
             shadow_depth_bias: 0.025,

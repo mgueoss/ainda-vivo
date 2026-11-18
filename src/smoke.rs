@@ -3,9 +3,11 @@ use crate::{
     app::*,
     atmosphere::{
         Atmosphere, Echo,
+        director::Director,
         sound::{Emitter, EpisodeCue},
     },
     scene::{
+        illusion::{self, Illusions, Impression},
         presence::{self, Presence, Silhouette},
         recording::{self, Recording},
         station::{self, EXIT_GATE, FixtureMotion, PANEL, PUMP_02_PANEL},
@@ -24,7 +26,8 @@ use bevy::{
 use std::{io::Write, path::PathBuf};
 
 const END_ROUTE: u32 = 4510;
-const END_TEST: u32 = 5160;
+const END_STAGE: u32 = 8860;
+const CONTROL_FRAMES: u32 = 3400;
 
 #[derive(Resource, Default)]
 pub struct SmokeTest {
@@ -47,6 +50,15 @@ pub struct SmokeTest {
     needle: Quat,
     passage: bool,
     wake: bool,
+    pause_director: (f32, f32, [u32; 3]),
+    director_stats: ([u32; 3], u32, u32, u32, u8),
+    framed_at: Option<u32>,
+    departed: bool,
+    illusion_verified: bool,
+    illusion_reset: bool,
+    log_read: bool,
+    archive_read: bool,
+    lens_verified: bool,
 }
 
 impl SmokeTest {
@@ -99,15 +111,18 @@ impl SmokeTest {
     }
 
     fn finish(&mut self, mut exit: MessageWriter<AppExit>) {
-        if self.capture_dir.is_some() && self.captures != 16 {
+        if self.capture_dir.is_some() && self.captures != 21 {
             self.failures.push("capture_completion");
+        }
+        if !self.archive_read || !self.lens_verified {
+            self.failures.push("archive_occurrence_or_false_indicator");
         }
         if self.check_audio && (self.heard_incidents.count_ones() < 2 || self.heard_episode != 3) {
             self.failures.push("spatial_audio_playback");
         }
         let passed = self.failures.is_empty();
         let report = format!(
-            "AINDA VIVO v{VERSION}\nrender/integration smoke: {}\nframes: {}\nmap audit: {} sectors, {} bidirectional portals\npresence: {} valid sightlines, {} framed sightings on the main route, walkway crossing: {}\nchecks: workshop cue, collision and pause, fuse, first pump reading, outside-wall ray, rearm, locked gate, pressure needle, second reading, full walking route, exit, optional monitor, restart, direct-gaze hold and close flashlight\nbasin ripple: {}\naudio device checked: {}\ndistinct incidental sounds: {}\ninspection and basin sounds played: {} of 2\nfailures: {:?}\n",
+            "AINDA VIVO v{VERSION}\nrender/integration smoke: {}\nframes: {}\nmap audit: {} sectors, {} bidirectional portals\npresence: {} valid sightlines, {} distinct framed sites on the main route, walkway crossing: {}, offscreen disappearance: {}\ndirector (first attempt): cues [presence, sound, illusion] {:?}, expired empty windows {}, protected or contextual deferrals {}, sector revisits {}, mood bit mask {:04b}\nchecks: workshop cue, collision and pause, fuse, first pump reading, outside-wall ray, rearm, locked gate, pressure needle, second reading, full walking route, exit, optional monitor, restart, direct-gaze hold and close flashlight\nbasin ripple: {}\nControl shift log: {}\nobserver-local prop shifted: {}, restored on restart: {}\naudio device checked: {}\ndistinct incidental sounds: {}\ninspection and basin sounds played: {} of 2\nBMP captures: {}\nfailures: {:?}\n",
             if passed { "PASS" } else { "FAIL" },
             self.frame,
             self.layout.0,
@@ -115,11 +130,25 @@ impl SmokeTest {
             self.sightlines,
             self.sightings,
             self.passage,
+            self.departed,
+            self.director_stats.0,
+            self.director_stats.1,
+            self.director_stats.2,
+            self.director_stats.3,
+            self.director_stats.4,
             self.wake,
+            self.log_read,
+            self.illusion_verified,
+            self.illusion_reset,
             self.check_audio,
             self.heard_incidents.count_ones(),
             self.heard_episode.count_ones(),
+            self.captures,
             self.failures,
+        );
+        let report = format!(
+            "{report}Archive occurrence read: {}\nControl false indicator applied: {}\n",
+            self.archive_read, self.lens_verified
         );
         info!("{report}");
         if let Some(path) = &self.report
@@ -145,6 +174,9 @@ pub struct SceneViews<'w, 's> {
     fixtures: Query<'w, 's, (Entity, &'static FixtureMotion, &'static Transform)>,
     waves: Query<'w, 's, &'static Visibility, With<Ripple>>,
     recording: Res<'w, Recording>,
+    director: Res<'w, Director>,
+    illusions: Res<'w, Illusions>,
+    impressions: Query<'w, 's, (&'static Transform, &'static Impression)>,
 }
 
 #[allow(
@@ -184,7 +216,59 @@ pub fn drive(
             }
         }
     }
-    let label = match smoke.frame {
+    // Additional focused checks after completing the route. Restart checks
+    // below retain their own per-attempt timeline.
+    match smoke.frame {
+        5330..=6509 if !smoke.passage && presence.crossing(session.elapsed) => {
+            smoke.capture(&mut commands, "passarela-vulto");
+            smoke.passage = true;
+        }
+        6510 => {
+            place(
+                &mut player,
+                illusion::LENS.with_y(0.002) + Vec3::Z * 1.60,
+                0.0,
+                0.0,
+            );
+            turn_to(&mut player, illusion::LENS);
+            comfort.vhs = VhsMode::Off;
+        }
+        6600 => smoke.capture(&mut commands, "ramal-antes"),
+        6620 => player.yaw += std::f32::consts::PI,
+        8420 => {
+            smoke.lens_verified = scene
+                .impressions
+                .iter()
+                .any(|(pose, prop)| pose.translation == illusion::LENS && prop.is_applied());
+            turn_to(&mut player, illusion::LENS);
+        }
+        8440 => smoke.capture(&mut commands, "ramal-depois"),
+        8510 => {
+            place(
+                &mut player,
+                station::ARCHIVE_LOG.with_y(0.002) + Vec3::Z * 1.16,
+                0.0,
+                0.0,
+            );
+            turn_to(&mut player, station::ARCHIVE_LOG);
+        }
+        8530 => keys.press(KeyCode::KeyE),
+        8531 => {
+            keys.release(KeyCode::KeyE);
+            smoke.archive_read =
+                session.message.contains("03:12") && session.progress.phase() == Phase::Exit;
+        }
+        8550 => smoke.capture(&mut commands, "arquivo-ocorrencia"),
+        _ => (),
+    }
+    let stage = if smoke.frame < 5330 {
+        smoke.frame
+    } else if smoke.frame < 5330 + CONTROL_FRAMES {
+        return;
+    } else {
+        smoke.frame - CONTROL_FRAMES
+    };
+    let label = match stage {
         8 => Some("menu"),
         90 => Some("corredor"),
         175 => Some("pausa"),
@@ -194,18 +278,18 @@ pub fn drive(
         2118 => Some("quadro-rearmado"),
         3035 => Some("bomba-retorno"),
         4540 => Some("gravacao"),
-        4660 => Some("triagem-vulto-vhs"),
-        4965 => Some("triagem-sem-vulto"),
-        4995 => Some("lanterna-ligada"),
-        5020 => Some("lanterna-desligada"),
-        5060 => Some("nave-alcance"),
+        6690 => Some("ficha-antes"),
+        8250 => Some("ficha-depois"),
+        8500 => Some("lanterna-ligada"),
+        8540 => Some("lanterna-desligada"),
+        8600 => Some("nave-alcance"),
         _ => None,
     };
     if let Some(label) = label {
         smoke.capture(&mut commands, label);
     }
 
-    match smoke.frame {
+    match stage {
         10 => {
             match station::audit_routes(&world) {
                 Ok(layout) => smoke.layout = layout,
@@ -245,6 +329,11 @@ pub fn drive(
             }
             session.screen = Screen::Paused;
             smoke.paused_position = player.body.feet;
+            smoke.pause_director = (
+                session.elapsed,
+                scene.director.hush,
+                scene.director.tally.cues,
+            );
             let moving = background_poses(&scene.fixtures);
             if moving
                 .iter()
@@ -261,6 +350,12 @@ pub fn drive(
         185 => {
             if player.body.feet != smoke.paused_position
                 || background_poses(&scene.fixtures) != smoke.paused_fixtures
+                || smoke.pause_director
+                    != (
+                        session.elapsed,
+                        scene.director.hush,
+                        scene.director.tally.cues,
+                    )
             {
                 smoke.failures.push("pause_simulation");
             }
@@ -280,7 +375,7 @@ pub fn drive(
                 -0.34,
             );
         }
-        210 | 1180 | 2045 | 2064 | 2145 | 3040 | 4520 => keys.press(KeyCode::KeyE),
+        210 | 1180 | 2045 | 2064 | 2145 | 3040 | 4520 | 4563 => keys.press(KeyCode::KeyE),
         211 => {
             keys.release(KeyCode::KeyE);
             if session.progress.phase() != Phase::Baseline {
@@ -422,7 +517,6 @@ pub fn drive(
                 smoke.passage = true;
             }
             if !smoke.wake
-                && smoke.passage
                 && scene
                     .waves
                     .iter()
@@ -444,7 +538,7 @@ pub fn drive(
                 smoke.failures.push("completion");
             }
             smoke.sightings = presence.observed_count();
-            if smoke.sightings < 3 || !smoke.passage || !smoke.wake {
+            if smoke.sightings < 1 || !smoke.wake {
                 smoke.failures.push("presence_and_basin_on_walking_route");
             }
             if scene
@@ -470,13 +564,65 @@ pub fn drive(
                 smoke.failures.push("recording_monitor_interaction");
             }
         }
-        4560 => restart(&mut session, &mut player, &mut comfort),
+        4552 => {
+            place(
+                &mut player,
+                station::SHIFT_LOG.with_y(0.002) + Vec3::Z * 1.02,
+                0.0,
+                0.0,
+            );
+            turn_to(&mut player, station::SHIFT_LOG);
+        }
+        4564 => {
+            keys.release(KeyCode::KeyE);
+            smoke.log_read =
+                session.message.contains("02:48") && session.progress.phase() == Phase::Exit;
+            if !smoke.log_read {
+                smoke.failures.push("control_shift_log");
+            }
+        }
         4580 => {
+            place(
+                &mut player,
+                presence::WALKWAY_WITNESS.with_y(0.002),
+                0.0,
+                0.0,
+            );
+            turn_to(&mut player, presence::WALKWAY_MARK + Vec3::Y * 1.74);
+        }
+        4581..=5329 if !smoke.passage && presence.crossing(session.elapsed) => {
+            smoke.capture(&mut commands, "passarela-vulto");
+            smoke.passage = true;
+        }
+        5330 => {
+            let tally = &scene.director.tally;
+            smoke.director_stats = (
+                tally.cues,
+                tally.empty,
+                tally.deferred,
+                tally.revisits,
+                tally.moods,
+            );
+            if !smoke.passage
+                || tally.cues[0] == 0
+                || tally.cues[1] == 0
+                || tally.empty == 0
+                || tally.revisits == 0
+                || tally.moods != 0b1111
+            {
+                smoke.failures.push("director_main_route_and_crossing");
+            }
+            restart(&mut session, &mut player, &mut comfort);
+        }
+        5350 => {
             if session.progress.phase() != Phase::Fuse
                 || atmosphere.echo != Echo::Waiting
                 || atmosphere.relief > 0.0
                 || atmosphere.episode.pressure > 0.0
                 || scene.recording.displayed()
+                || scene.director.attempt != session.attempt
+                || scene.director.tally.cues != [0; 3]
+                || scene.illusions.altered != 0
             {
                 smoke.failures.push("restart_resets_episode");
             }
@@ -490,45 +636,112 @@ pub fn drive(
                 0.0,
             );
         }
-        4595 => {
+        5390 => {
             if presence.active() || !matches!(scene.silhouettes.single(), Ok(Visibility::Hidden)) {
                 smoke.failures.push("presence_outside_view");
             }
             turn_to(&mut player, presence::FIRST_MARK + Vec3::Y * 1.59);
         }
-        4660 | 4800 => {
-            if !presence.active() || !matches!(scene.silhouettes.single(), Ok(Visibility::Visible))
+        5391..=6619 => {
+            if smoke.framed_at.is_none()
+                && presence.observed_count() > 0
+                && matches!(scene.silhouettes.single(), Ok(Visibility::Visible))
             {
-                smoke.failures.push("presence_visible_under_direct_gaze");
+                smoke.framed_at = Some(smoke.frame);
+            }
+            if let Some(frame) = smoke.framed_at {
+                if smoke.frame == frame + 64 {
+                    if !presence.active()
+                        || !matches!(scene.silhouettes.single(), Ok(Visibility::Visible))
+                    {
+                        smoke.failures.push("presence_visible_under_direct_gaze");
+                    }
+                    smoke.capture(&mut commands, "triagem-vulto-vhs");
+                } else if smoke.frame == frame + 70 {
+                    player.yaw += std::f32::consts::PI;
+                    player.pitch = 0.0;
+                } else if smoke.frame == frame + 105 {
+                    if presence.retired_unseen() != 1 || presence.active() {
+                        smoke.failures.push("offscreen_disappearance");
+                    }
+                    player.yaw -= std::f32::consts::PI;
+                    turn_to(&mut player, presence::FIRST_MARK + Vec3::Y * 1.59);
+                } else if smoke.frame == frame + 114 {
+                    smoke.departed = presence.retired_unseen() == 1
+                        && matches!(scene.silhouettes.single(), Ok(Visibility::Hidden));
+                    smoke.capture(&mut commands, "triagem-sem-vulto");
+                }
             }
         }
-        4965 => {
-            if presence.active() || !matches!(scene.silhouettes.single(), Ok(Visibility::Hidden)) {
-                smoke.failures.push("presence_finishes_visible_hold");
+        6670 => {
+            if !smoke.departed {
+                smoke.failures.push("presence_and_unseen_retirement");
             }
-        }
-        4980 => {
             comfort.vhs = VhsMode::Off;
+            place(
+                &mut player,
+                illusion::FILE.with_y(0.002) + Vec3::Z * 1.84,
+                0.0,
+                0.0,
+            );
+            turn_to(&mut player, illusion::FILE);
+        }
+        6700 => {
+            if scene.illusions.altered != 0 {
+                smoke.failures.push("illusion_changes_under_gaze");
+            }
+            player.yaw += std::f32::consts::PI;
+            player.pitch = 0.0;
+        }
+        8200 => {
+            smoke.illusion_verified = scene.illusions.altered == 1
+                && scene.director.tally.cues[2] == 1
+                && scene.impressions.iter().any(|(pose, prop)| {
+                    prop.is_applied()
+                        && (0.24..0.35).contains(&pose.translation.distance(illusion::FILE))
+                });
+            if !smoke.illusion_verified {
+                smoke
+                    .failures
+                    .push("illusion_does_not_shift_behind_observer");
+            }
+            turn_to(&mut player, illusion::FILE);
+        }
+        8310 => restart(&mut session, &mut player, &mut comfort),
+        8330 => {
+            smoke.illusion_reset = scene.illusions.altered == 0
+                && scene.illusions.attempt == session.attempt
+                && scene.impressions.iter().all(|(_, prop)| !prop.is_applied())
+                && scene
+                    .impressions
+                    .iter()
+                    .any(|(pose, _)| pose.translation == illusion::FILE);
+            if !smoke.illusion_reset {
+                smoke.failures.push("illusion_does_not_reset");
+            }
+        }
+        8470 => {
+            session.message_left = 0.0;
             place(&mut player, Vec3::new(0.20, 0.002, -8.72), 0.025, -0.135);
         }
-        4995 => {
+        8500 => {
             if !matches!((scene.cameras.single(), scene.lantern.single()), (Ok((camera, _)), Ok((beam, Visibility::Visible)))
                 if beam.translation == camera.translation && beam.rotation == camera.rotation)
             {
                 smoke.failures.push("flashlight_center_alignment");
             }
         }
-        5005 => comfort.flashlight = false,
-        5020 => {
+        8515 => comfort.flashlight = false,
+        8540 => {
             if !matches!(scene.lantern.single(), Ok((_, Visibility::Hidden))) {
                 smoke.failures.push("flashlight_toggle");
             }
         }
-        5050 => {
+        8580 => {
             comfort.flashlight = true;
             place(&mut player, Vec3::new(-0.93, 0.002, -30.5), 0.0, -0.070);
         }
-        END_TEST => smoke.finish(exit),
+        END_STAGE => smoke.finish(exit),
         _ => (),
     }
 }

@@ -6,6 +6,7 @@ pub enum Action {
     RestorePower,
     ReadNote,
     ReadArchive,
+    ReadShiftLog,
     ReviewRecording,
     CheckGate,
 }
@@ -58,6 +59,7 @@ impl Progress {
             Action::RestorePower => "rearmar quadro geral",
             Action::ReadNote => "ler ordem de vistoria",
             Action::ReadArchive => "ler ocorrência da Bomba 02",
+            Action::ReadShiftLog => "ler livro de ponto",
             Action::ReviewRecording => "consultar gravação da nave",
             Action::CheckGate if self.exit_unlocked() => return None,
             Action::CheckGate => "conferir trava da comporta",
@@ -74,7 +76,7 @@ impl Progress {
             (Action::InspectPump, Phase::Fuse) => "A equipe deixou o fusível na oficina.",
             (Action::InspectPump, Phase::Baseline) => {
                 self.phase = Phase::Electrical;
-                "Pressão de repouso em zero. Lacre intacto."
+                "Pressão de repouso em zero. O lacre da última vistoria segue intacto."
             }
             (Action::InspectPump, Phase::Electrical) => "Pressão de repouso já registrada.",
             (Action::RestorePower, Phase::Fuse) => "Falta o fusível da oficina.",
@@ -88,21 +90,24 @@ impl Progress {
             (Action::RestorePower, _) => "O quadro já tem energia.",
             (Action::InspectPump, Phase::Return) => {
                 self.phase = Phase::Exit;
-                "Pressão acima da faixa. Lacre intacto. Comporta liberada."
+                "Pressão acima da faixa. O mesmo lacre segue intacto. Comporta liberada."
             }
             (Action::InspectPump, Phase::Exit) => "A leitura de retorno ficou registrada.",
             (Action::ReadNote, _) => {
                 "Ordem 07. A Bomba 02 está isolada desde o último turno. Compare as leituras antes e depois do rearme."
             }
             (Action::ReadArchive, _) => {
-                "Ocorrência 04. O turno anterior descreveu três pancadas na Bomba 02. A carcaça estava vazia na inspeção."
+                "Arquivo, 03:12. Borges anotou três pancadas na Bomba 02. A equipe encontrou a prancheta no piso. A linha de saída dele ficou em branco."
+            }
+            (Action::ReadShiftLog, _) => {
+                "Controle, 02:48. Borges deu baixa sozinho. Às 03:12, o gravador marcou dois operadores na nave. A folha original tem uma única assinatura."
             }
             (Action::ReviewRecording, Phase::Fuse | Phase::Baseline | Phase::Electrical) => {
                 "O gravador ainda depende do quadro geral."
             }
             (Action::ReviewRecording, _) => {
                 self.recording_reviewed = true;
-                "Câmera da nave. Quadro arquivado no momento da leitura inicial."
+                "Câmera 02. O gravador salvou o quadro junto da leitura inicial. O campo de operador estava preenchido antes da vistoria."
             }
             (Action::CheckGate, Phase::Return) => "A trava pede a leitura de retorno na Bomba 02.",
             (Action::CheckGate, Phase::Exit) => "Comporta liberada.",
@@ -149,6 +154,7 @@ mod tests {
     fn optional_recording_and_reading_do_not_advance_the_objective() {
         let mut p = Progress::default();
         p.apply(Action::ReadArchive);
+        p.apply(Action::ReadShiftLog);
         p.apply(Action::ReviewRecording);
         assert!(!p.recording_reviewed());
         p.apply(Action::TakeFuse);

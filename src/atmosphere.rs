@@ -1,4 +1,5 @@
 //! Local presentation. Reads the expedition state without changing its rules.
+pub mod director;
 mod episode;
 pub mod sound;
 

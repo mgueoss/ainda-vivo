@@ -36,7 +36,8 @@ pub fn material(
                     let damp = ((streak * 0.67 + cloud * 0.33 - 0.49) * 3.8).clamp(0.0, 1.0);
                     let chips = (grain > 0.80 && cloud < 0.42) as u8 as f32 * 0.12;
                     let paint = Vec3::new(0.45, 0.49, 0.45) + Vec3::splat(mottled - chips);
-                    paint.lerp(Vec3::new(0.20, 0.24, 0.21), damp * 0.48)
+                    let runoff = noise(uv, IVec2::new(57, 2), 61).powi(6);
+                    paint.lerp(Vec3::new(0.20, 0.24, 0.21), damp * 0.44 + runoff * 0.23)
                 }
                 Surface::Tile => {
                     let grid = (uv * 4.0).fract();
@@ -49,7 +50,9 @@ pub fn material(
                 Surface::Ceiling => Vec3::new(0.255, 0.27, 0.26) + Vec3::splat(mottled * 0.72),
                 Surface::Concrete => {
                     let stain = (cloud * 0.7 + grain * 0.3).powi(3);
-                    Vec3::new(0.29, 0.32, 0.306) + Vec3::splat(mottled * 0.66 - stain * 0.20)
+                    let wear = noise(uv, IVec2::new(3, 11), 40).powi(4);
+                    Vec3::new(0.29, 0.32, 0.306)
+                        + Vec3::splat(mottled * 0.66 - stain * 0.20 + wear * 0.068)
                 }
                 Surface::Oxide => {
                     let wear = noise(uv, IVec2::new(17, 6), 110);

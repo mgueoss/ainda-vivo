@@ -1,6 +1,6 @@
-# AINDA VIVO — v0.0.7
+# AINDA VIVO — v0.0.8 · Além da Escuridão
 
-A vistoria da **Bomba 02** leva o jogador à nave antes e depois de rearmar o quadro geral. A Presença surge em mais momentos da expedição. Faixas e indicações nas curvas orientam o caminho dentro do alcance da lanterna. [Aparições e capturas](docs/PRESENCA.md)
+A vistoria da **Bomba 02** leva o jogador à nave antes e depois de rearmar o quadro geral. A Presença pode ficar imóvel, espiar estruturas ou atravessar a passarela. Um diretor de terror alterna momentos de observação, sons distantes e intervalos de silêncio. [Changelog](CHANGELOG.md) · [Documentação de continuidade](docs/CONTINUIDADE-v0.0.8.md)
 
 O corredor leva à **Estação de Bombeamento 07**, com 15 setores, rotas laterais e cerca de 6.100 m² de planta. A tecla **F4** alterna o VHS entre suave, forte e desligado. O menu da pausa também oferece controle do VHS e do volume. [Detalhes do mapa](docs/ESTACAO-07.md)
 
@@ -8,7 +8,7 @@ Protótipo real para Windows, feito em Rust + Bevy. Direção: usuário. Program
 
 ## Jogar
 
-Abra **JOGAR.cmd** para iniciar `windows/ainda-vivo-v0.0.7.exe` offline. Para acompanhar e salvar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
+Abra **JOGAR.cmd** para iniciar `windows/ainda-vivo-v0.0.8.exe` offline. Para acompanhar e salvar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
 
 Sem executável pronto, o mesmo atalho compila e executa. A primeira compilação baixa as bibliotecas oficiais do motor; não baixa modelos, texturas, áudio ou pacotes de jogo. Compilações seguintes reaproveitam o cache.
 
@@ -31,7 +31,7 @@ O jogo pausa ao perder o foco. Fechar a janela encerra o programa. O menu permit
 
 ## Conforto e desempenho
 
-- Balanço desligado por padrão. A opção suave desloca a câmera verticalmente em no máximo 6 mm; não inclina o horizonte.
+- Balanço desligado por padrão. A opção suave desloca a câmera verticalmente em até 5 mm e mantém o horizonte nivelado.
 - O VHS simula granulação fina, linhas de fita, separação discreta de cor e leve deslocamento horizontal no rodapé. O efeito age na cena 3D, com o HUD e o menu legíveis. O modo desligado remove o passe gráfico.
 - Campo de visão **vertical** ajustável de 55° a 80°; inicial 65°. Sensibilidade ajustável no menu. Preferências são salvas automaticamente.
 - Física fixa em 60 Hz, interpolação visual e aceleração suave. VSync ligado inicialmente; FPS desbloqueável no menu.
@@ -73,11 +73,11 @@ Bevy está fixado em **0.18.1**, com as dependências travadas no `Cargo.lock`. 
 
 ## Escopo e limitações
 
-O protótipo inclui exploração em primeira pessoa, uma vistoria completa com ida e volta, registros opcionais, menu, pausa e diagnóstico. A Presença surge em momentos e locais ligados ao percurso. A câmera fixa da nave produz um quadro que pode ser consultado em um terminal da sala de Controle.
+O protótipo inclui exploração em primeira pessoa, uma vistoria completa com ida e volta, registros opcionais, menu, pausa e diagnóstico. A câmera fixa da nave produz um quadro que pode ser consultado no Controle. Os registros do Arquivo e do Controle contradizem o horário de saída de um operador.
 
 O controlador usa uma caixa cinemática de 54 cm de largura contra caixas estáticas alinhadas aos eixos, com varredura contínua e deslizamento. Não é uma simulação de corpos rígidos: não suporta rampas, escadas automáticas, empurrar objetos, plataformas móveis ou colisores rotacionados. Não inserir essas geometrias sem ampliar e testar a física. Agachar mantém os pés no chão e impede levantar dentro de uma travessa baixa.
 
-Sem salvamento de progresso, multiplayer, Android, calibração automática, instalador de conteúdo ou download interno. Ilusões individuais, morte silenciosa e campanha são diretrizes futuras, não funcionalidades já implementadas.
+As ilusões visuais já têm um estado local por tentativa. Morte silenciosa, campanha expandida, salvamento de progresso, Android, LAN e distribuição em pacotes ficam para versões futuras.
 
 Veja [arquitetura](docs/ARQUITETURA.md), [validação](docs/VALIDACAO.md) e [próximos passos](docs/PROXIMOS_PASSOS.md).
 

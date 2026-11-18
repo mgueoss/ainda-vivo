@@ -31,27 +31,31 @@ impl Kind {
         }
     }
 
-    pub fn clip(self) -> Arc<[f32]> {
+    pub fn clip(self, variant: usize) -> Arc<[f32]> {
+        let gap = [0.0, -0.12, 0.14][variant];
+        let pitch = [1.0, 0.79, 1.13][variant];
         samples(
             self.duration(),
-            1473 + self as u32 * 97,
+            1473 + self as u32 * 97 + variant as u32 * 311,
             |t, noise| match self {
                 Self::Footsteps => {
-                    shoe(t - 0.055, noise, 74.0) * 0.67
-                        + shoe(t - 0.53, noise, 106.0) * 0.51
+                    shoe(t - 0.055, noise, 74.0 * pitch) * 0.67
+                        + shoe(t - 0.53 - gap, noise, 106.0 * pitch) * 0.51
                         + shoe(t - 0.175, noise, 74.0) * 0.11
-                        + shoe(t - 0.71, noise, 106.0) * 0.086
+                        + shoe(t - 0.71 - gap, noise, 106.0) * 0.086
                 }
                 Self::Pipe => {
-                    pipe(t - 0.06, noise, 1.0)
-                        + pipe(t - 0.38, noise, 0.92) * 0.43
+                    pipe(t - 0.06, noise, pitch)
+                        + pipe(t - 0.38 - gap, noise, 0.92 * pitch) * 0.43
                         + pipe(t - 0.170, noise, 1.0) * 0.12
                 }
-                Self::Drag => drag(t - 0.09, noise) + drag((t - 0.89) * 1.51, noise) * 0.48,
+                Self::Drag => {
+                    drag((t - 0.09) * pitch, noise) + drag((t - 0.89 - gap) * 1.51, noise) * 0.44
+                }
                 Self::Drip => {
                     drip(t - 0.08, noise, 560.0)
-                        + drip(t - 0.74, noise, 439.0) * 0.69
-                        + drip(t - 0.85, noise, 439.0) * 0.13
+                        + drip(t - 0.74 - gap, noise, 439.0 * pitch) * 0.64
+                        + drip(t - 0.85 - gap, noise, 439.0) * 0.13
                 }
             },
         )
@@ -136,10 +140,10 @@ impl IncidentSchedule {
                 .dot(forward)
                 < 0.44
         });
-        let incident = outside_view.or_else(|| candidates.next());
+        let incident = outside_view.or_else(|| candidates.find(|(kind, _)| *kind != Footsteps));
         if let Some((kind, _)) = incident {
             self.previous = Some(kind);
-            self.next_at = elapsed + 14.0 + self.random() * 12.0;
+            self.next_at = elapsed + 9.0 + self.random() * 6.0;
         } else {
             self.next_at = elapsed + 1.4;
         }
@@ -201,7 +205,7 @@ mod tests {
         assert!(schedule.next(6.0, &camera).is_none());
         let (first, position) = schedule.next(12.0, &camera).unwrap();
         assert!(position.z > camera.translation.z);
-        assert!(schedule.next(25.0, &camera).is_none());
+        assert!(schedule.next(20.0, &camera).is_none());
         let (second, _) = schedule.next(38.0, &camera).unwrap();
         assert_ne!(first, second);
         assert!(

@@ -97,12 +97,11 @@ pub struct Solid {
 pub struct CollisionWorld(pub Vec<Solid>);
 
 impl CollisionWorld {
-    pub fn active(&self, gate_open: bool) -> Vec<Aabb> {
+    pub fn active(&self, gate_open: bool) -> impl Iterator<Item = Aabb> + '_ {
         self.0
             .iter()
-            .filter(|s| !s.gate || !gate_open)
+            .filter(move |s| !s.gate || !gate_open)
             .map(|s| s.bounds)
-            .collect()
     }
 
     pub fn occludes(&self, origin: Vec3, target: Vec3, gate_open: bool) -> bool {
@@ -170,7 +169,9 @@ pub fn run() -> bevy::app::AppExit {
         .insert_resource(preferences)
         .init_resource::<CollisionWorld>()
         .init_resource::<crate::atmosphere::Atmosphere>()
+        .init_resource::<crate::atmosphere::director::Director>()
         .init_resource::<crate::scene::presence::Presence>()
+        .init_resource::<crate::scene::illusion::Illusions>()
         .init_resource::<crate::diagnostics::Performance>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
@@ -190,6 +191,7 @@ pub fn run() -> bevy::app::AppExit {
             (
                 crate::scene::setup,
                 crate::scene::presence::setup,
+                crate::scene::illusion::setup,
                 crate::scene::recording::setup,
                 crate::scene::water::setup,
                 crate::ui::setup,
@@ -211,7 +213,12 @@ pub fn run() -> bevy::app::AppExit {
                 crate::scene::water::update,
                 crate::scene::recording::update,
                 crate::scene::station::animate,
-                crate::scene::presence::update,
+                (
+                    crate::atmosphere::director::update,
+                    crate::scene::presence::update,
+                    crate::scene::illusion::update,
+                )
+                    .chain(),
                 crate::atmosphere::sound::emit,
                 crate::atmosphere::sound::emit_incidents,
                 crate::atmosphere::sound::mix,

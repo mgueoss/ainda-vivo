@@ -183,7 +183,7 @@ impl Station<'_, '_, '_, '_> {
                     6.1,
                 );
                 self.desk(Vec3::new(27.6, 0.0, -8.3), false);
-                let folder = Vec3::new(26.77, 0.942, -8.06);
+                let folder = super::ARCHIVE_LOG;
                 let report = self.block(
                     "Ocorrência arquivada da Bomba 02",
                     folder,
@@ -304,6 +304,18 @@ impl Station<'_, '_, '_, '_> {
                 );
                 self.desk(Vec3::new(29.8, 0.0, -83.8), true);
                 self.desk(Vec3::new(17.5, 0.0, -82.2), true);
+                let shift_log = super::SHIFT_LOG;
+                let log = self.block(
+                    "Livro de ponto do Controle",
+                    shift_log,
+                    Vec3::new(0.34, 0.028, 0.29),
+                    yellow.clone(),
+                    false,
+                );
+                self.b.commands.entity(log).insert(Interactable {
+                    action: Action::ReadShiftLog,
+                    bounds: Aabb::from_center_size(shift_log, Vec3::new(0.40, 0.073, 0.33)),
+                });
                 self.sign(
                     "CÂMERA 02",
                     Vec3::new(17.22, 1.383, -82.127),
@@ -318,6 +330,12 @@ impl Station<'_, '_, '_, '_> {
                     Vec3::new(6.2, 1.48, 0.10),
                     coal.clone(),
                     false,
+                );
+                self.sign(
+                    "RAMAL ISOLADO",
+                    Vec3::new(23.37, 1.37, -85.65),
+                    Vec2::new(0.94, 0.125),
+                    0.0,
                 );
                 for i in 0..8 {
                     let x = 21.45 + i as f32 * 0.72;

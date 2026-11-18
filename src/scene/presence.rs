@@ -2,7 +2,7 @@
 use super::surfaces;
 use crate::{
     app::{CollisionWorld, MainCamera, Screen, Session},
-    atmosphere::Atmosphere,
+    atmosphere::director::{Cue, Director},
 };
 use ainda_vivo_core::story::{Phase, Progress};
 use bevy::{light::NotShadowCaster, prelude::*};
@@ -16,6 +16,8 @@ const FADE_OUT: f32 = 0.83;
 
 pub const FIRST_MARK: Vec3 = Vec3::new(2.55, 0.016, -21.36);
 pub const FIRST_WITNESS: Vec3 = Vec3::new(0.0, 1.62, -8.8);
+pub const WALKWAY_MARK: Vec3 = Vec3::new(7.16, 0.016, -80.25);
+pub const WALKWAY_WITNESS: Vec3 = Vec3::new(7.92, 1.62, -69.05);
 
 struct Site {
     name: &'static str,
@@ -28,6 +30,7 @@ struct Site {
 
 #[derive(Clone, Copy)]
 enum Motion {
+    Still,
     Watch,
     Lean(f32),
     Cross(f32),
@@ -36,6 +39,7 @@ enum Motion {
 impl Motion {
     fn hold(self) -> f32 {
         match self {
+            Self::Still => 6.35,
             Self::Watch => 4.65,
             Self::Lean(_) => 3.48,
             Self::Cross(_) => 2.55,
@@ -44,6 +48,7 @@ impl Motion {
 
     fn pose(self, age: f32, facing: Quat) -> (Vec3, Quat) {
         match self {
+            Self::Still => (Vec3::ZERO, facing),
             Self::Watch => (facing * Vec3::X * (0.28 * smooth(age / 1.03)), facing),
             Self::Lean(distance) => {
                 let lean = smooth(age / 1.15);
@@ -70,7 +75,7 @@ const SITES: [Site; 10] = [
         witness: FIRST_WITNESS,
         from: Phase::Fuse,
         through: Phase::Baseline,
-        motion: Motion::Watch,
+        motion: Motion::Still,
     },
     Site {
         name: "Entre as bombas",
@@ -102,12 +107,12 @@ const SITES: [Site; 10] = [
         witness: Vec3::new(1.6, 1.62, -44.10),
         from: Phase::Return,
         through: Phase::Exit,
-        motion: Motion::Lean(-0.61),
+        motion: Motion::Still,
     },
     Site {
         name: "Passarela leste",
-        feet: Vec3::new(7.16, 0.016, -80.25),
-        witness: Vec3::new(7.92, 1.62, -69.05),
+        feet: WALKWAY_MARK,
+        witness: WALKWAY_WITNESS,
         from: Phase::Exit,
         through: Phase::Exit,
         motion: Motion::Cross(-2.34),
@@ -186,6 +191,7 @@ struct Sighting {
     since: f32,
     checked_at: f32,
     framed_for: f32,
+    hidden_since: Option<f32>,
     rotation: Quat,
 }
 
@@ -193,10 +199,27 @@ struct Sighting {
 pub struct Presence {
     attempt: u64,
     seen: [bool; SITES.len()],
+    appearances: [u8; SITES.len()],
+    last_site: Option<(usize, f32)>,
+    retired_unseen: u32,
     next_at: f32,
     last_phase: Phase,
     sighting: Option<Sighting>,
 }
+
+#[derive(Default)]
+struct Opportunity {
+    open: bool,
+    revisit: bool,
+    offset: usize,
+}
+
+#[cfg(test)]
+const OPEN: Opportunity = Opportunity {
+    open: true,
+    revisit: false,
+    offset: 0,
+};
 
 impl Presence {
     pub fn active(&self) -> bool {
@@ -205,6 +228,10 @@ impl Presence {
 
     pub fn observed_count(&self) -> usize {
         self.seen.iter().filter(|seen| **seen).count()
+    }
+
+    pub fn retired_unseen(&self) -> u32 {
+        self.retired_unseen
     }
 
     pub fn crossing(&self, elapsed: f32) -> bool {
@@ -221,7 +248,7 @@ impl Presence {
         camera: &Transform,
         lens: &PerspectiveProjection,
         world: &CollisionWorld,
-        quiet_beat: bool,
+        opportunity: Opportunity,
     ) -> Option<(Transform, f32)> {
         let phase = progress.phase();
         let gate_open = progress.exit_unlocked();
@@ -231,12 +258,28 @@ impl Presence {
         }
         if self.sighting.is_none()
             && elapsed >= self.next_at
-            && !quiet_beat
-            && let Some((index, site)) = SITES.iter().enumerate().find(|(index, site)| {
-                !self.seen[*index]
-                    && (site.from..=site.through).contains(&phase)
-                    && site.available(camera, lens, world, gate_open)
-            })
+            && opportunity.open
+            && let Some((index, site)) = SITES
+                .iter()
+                .enumerate()
+                .cycle()
+                .skip(opportunity.offset % SITES.len())
+                .take(SITES.len())
+                .filter(|(index, site)| {
+                    let phase_matches = (site.from..=site.through).contains(&phase);
+                    let can_return = opportunity.revisit
+                        && self.appearances[*index] <= 1
+                        && self.last_site.is_none_or(|(last, started)| {
+                            last != *index || elapsed - started > 21.0
+                        });
+                    (!self.seen[*index] && phase_matches
+                        || can_return && (phase_matches || *index == 0 && phase == Phase::Return))
+                        && site.available(camera, lens, world, gate_open)
+                })
+                .min_by_key(|(_, site)| {
+                    let favor_cross = phase == Phase::Exit && !opportunity.offset.is_multiple_of(4);
+                    favor_cross && !matches!(site.motion, Motion::Cross(_))
+                })
         {
             let bearing = (camera.translation - site.feet).with_y(0.0);
             // Fix the silhouette's orientation at the start of the sighting.
@@ -246,8 +289,11 @@ impl Presence {
                 since: elapsed,
                 checked_at: elapsed,
                 framed_for: 0.0,
+                hidden_since: None,
                 rotation,
             });
+            self.appearances[index] = self.appearances[index].saturating_add(1);
+            self.last_site = Some((index, elapsed));
             debug!("A Presença: {} em {elapsed:.2}s", site.name);
         }
 
@@ -266,12 +312,21 @@ impl Presence {
         let fade = smooth(age / FADE_IN) * smooth((duration - age) / FADE_OUT);
         let range =
             smooth((distance - MIN_DISTANCE) / 2.3) * smooth((MAX_DISTANCE + 2.2 - distance) / 2.2);
-        let alpha = 0.86 * fade * range;
+        let alpha = 0.91 * fade * range;
+        let in_view = site.in_view(offset, camera, lens, world, gate_open);
+        if in_view {
+            sighting.hidden_since = None;
+        } else if sighting.framed_for >= 0.46 && !matches!(site.motion, Motion::Cross(_)) {
+            let hidden = *sighting.hidden_since.get_or_insert(elapsed);
+            if elapsed - hidden > 0.37 {
+                self.next_at = elapsed + 4.5;
+                self.sighting = None;
+                self.retired_unseen += 1;
+                return None;
+            }
+        }
         // A glimpse that happened while rounding a corner can try again on return.
-        if !self.seen[sighting.site]
-            && alpha >= 0.48
-            && site.in_view(offset, camera, lens, world, gate_open)
-        {
+        if sighting.framed_for < 0.46 && alpha >= 0.48 && in_view {
             sighting.framed_for += (elapsed - sighting.checked_at).min(0.075);
             self.seen[sighting.site] = sighting.framed_for >= 0.46;
         }
@@ -323,7 +378,7 @@ type SilhouetteView<'w, 's> = Query<
 pub fn update(
     session: Res<Session>,
     world: Res<CollisionWorld>,
-    atmosphere: Res<Atmosphere>,
+    mut director: ResMut<Director>,
     cameras: Query<(&Transform, &Projection), With<MainCamera>>,
     mut presence: ResMut<Presence>,
     mut figure: SilhouetteView,
@@ -341,6 +396,7 @@ pub fn update(
     let Ok((mut transform, mut visibility, material)) = figure.single_mut() else {
         return;
     };
+    let was_active = presence.active();
     if session.screen == Screen::Playing
         && let Ok((camera, Projection::Perspective(lens))) = cameras.single()
         && let Some((pose, alpha)) = presence.advance(
@@ -349,13 +405,16 @@ pub fn update(
             camera,
             lens,
             &world,
-            atmosphere.episode.pump_hush > 0.26
-                || atmosphere
-                    .episode
-                    .trace
-                    .is_some_and(|trace| trace.age < 1.24),
+            Opportunity {
+                open: director.allows(Cue::Presence, session.elapsed),
+                revisit: director.revisit,
+                offset: director.order,
+            },
         )
     {
+        if !was_active {
+            director.claim(Cue::Presence, session.elapsed);
+        }
         *transform = pose;
         *visibility = Visibility::Visible;
         if let Some(material) = materials.get_mut(material) {
@@ -485,8 +544,7 @@ mod tests {
         let lens = PerspectiveProjection::default();
         let world = CollisionWorld::default();
         let progress = Progress::default();
-        let mut advance =
-            |time, view| presence.advance(time, &progress, view, &lens, &world, false);
+        let mut advance = |time, view| presence.advance(time, &progress, view, &lens, &world, OPEN);
         let (first, start) = advance(0.0, &camera).unwrap();
         assert_eq!(start, 0.0);
         for frame in 1..=180 {
@@ -497,7 +555,7 @@ mod tests {
                 assert!(alpha > 0.72);
             }
         }
-        assert!(advance(6.3, &camera).is_none());
+        assert!(advance(7.8, &camera).is_none());
         assert!(advance(100.0, &camera).is_none());
     }
 
@@ -513,22 +571,73 @@ mod tests {
         let progress = Progress::default();
         assert!(
             presence
-                .advance(0.0, &progress, &camera, &lens, &world, false)
+                .advance(0.0, &progress, &camera, &lens, &world, OPEN)
                 .is_some()
         );
         assert!(
             presence
-                .advance(6.3, &progress, &away, &lens, &world, false)
+                .advance(7.8, &progress, &away, &lens, &world, OPEN)
                 .is_none()
         );
         assert!(
             presence
-                .advance(7.0, &progress, &camera, &lens, &world, false)
+                .advance(8.5, &progress, &camera, &lens, &world, OPEN)
                 .is_none()
         );
         assert!(
             presence
-                .advance(9.2, &progress, &camera, &lens, &world, false)
+                .advance(10.6, &progress, &camera, &lens, &world, OPEN)
+                .is_some()
+        );
+    }
+
+    #[test]
+    fn framed_figure_retires_out_of_view_and_can_return_on_revisit() {
+        let site = &SITES[0];
+        let mut presence = Presence::default();
+        let camera = Transform::from_translation(site.target() + Vec3::Z * 12.0)
+            .looking_at(site.target(), Vec3::Y);
+        let away = camera.looking_to(Vec3::Z, Vec3::Y);
+        let lens = PerspectiveProjection::default();
+        let world = CollisionWorld::default();
+        let progress = Progress::default();
+        for frame in 0..100 {
+            assert!(
+                presence
+                    .advance(frame as f32 / 60.0, &progress, &camera, &lens, &world, OPEN)
+                    .is_some()
+            );
+        }
+        assert_eq!(presence.observed_count(), 1);
+        assert!(
+            presence
+                .advance(2.0, &progress, &away, &lens, &world, OPEN)
+                .is_some()
+        );
+        assert!(
+            presence
+                .advance(2.4, &progress, &away, &lens, &world, OPEN)
+                .is_none()
+        );
+        assert_eq!(presence.retired_unseen(), 1);
+        assert!(
+            presence
+                .advance(25.0, &progress, &camera, &lens, &world, OPEN)
+                .is_none()
+        );
+        assert!(
+            presence
+                .advance(
+                    25.0,
+                    &progress,
+                    &camera,
+                    &lens,
+                    &world,
+                    Opportunity {
+                        revisit: true,
+                        ..OPEN
+                    }
+                )
                 .is_some()
         );
     }

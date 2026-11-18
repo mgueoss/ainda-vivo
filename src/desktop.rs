@@ -1,4 +1,5 @@
 use crate::{app::*, smoke::SmokeTest};
+use ainda_vivo_core::collision::Aabb;
 use ainda_vivo_core::{Vec2, movement::SPAWN};
 use bevy::{
     input::mouse::AccumulatedMouseMotion,
@@ -104,14 +105,19 @@ pub fn simulate(
     world: Res<CollisionWorld>,
     mut session: ResMut<Session>,
     mut player: ResMut<LocalPlayer>,
+    mut solids: Local<Option<[Vec<Aabb>; 2]>>,
 ) {
+    if world.is_changed() || solids.is_none() {
+        *solids = Some([world.active(false).collect(), world.active(true).collect()]);
+    }
     if session.screen != Screen::Playing {
         return;
     }
-    let solids = world.active(session.progress.exit_unlocked());
+    let bounds = &solids.as_ref().expect("collision lists initialized")
+        [usize::from(session.progress.exit_unlocked())];
     let command = player.command;
     player.command.jump = false;
-    player.body.step(command, time.delta_secs(), &solids);
+    player.body.step(command, time.delta_secs(), bounds);
     if player.body.feet.y < -8.0 || !player.body.feet.is_finite() {
         player.body = default();
         player.body.feet = SPAWN;
@@ -149,8 +155,8 @@ pub fn update_camera(
     };
     let feet = player.body.previous_feet.lerp(player.body.feet, alpha);
     let speed = player.body.velocity.with_y(0.0).length();
-    let bob = if comfort.bodycam && player.body.grounded && session.screen == Screen::Playing {
-        (session.elapsed * 9.0).sin() * 0.006 * (speed / 2.5).min(1.0)
+    let bob = if comfort.bodycam && player.body.grounded {
+        (session.elapsed * 8.2).sin() * 0.005 * (speed / 2.5).min(1.0)
     } else {
         0.0
     };

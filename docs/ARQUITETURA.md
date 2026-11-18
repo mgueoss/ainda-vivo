@@ -1,5 +1,7 @@
 # Arquitetura da v0.0.1
 
+Este capítulo registra o protótipo original. Para os módulos e fluxos atuais, consulte a [documentação de continuidade da v0.0.8](CONTINUIDADE-v0.0.8.md).
+
 ## Limites entre módulos
 
 | Local | Responsabilidade |

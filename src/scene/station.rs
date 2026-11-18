@@ -19,6 +19,15 @@ use plan::{PORTALS, ROOMS, Room, Sector, Side, WATER_MAX, WATER_MIN, get};
 
 const WALL: f32 = 0.24;
 const FLOOR_DEPTH: f32 = 0.38;
+pub const SHIFT_LOG: Vec3 = Vec3::new(28.72, 0.949, -83.57);
+pub const ARCHIVE_LOG: Vec3 = Vec3::new(26.77, 0.942, -8.06);
+
+pub(crate) fn sector_id(feet: Vec3) -> Option<u8> {
+    ROOMS
+        .iter()
+        .find(|room| room.contains(feet.xz()))
+        .map(|room| room.sector as u8)
+}
 
 pub fn reached_exit(feet: Vec3) -> bool {
     (get(Sector::Exit).min.y..plan::EXIT_THRESHOLD).contains(&feet.z) && feet.x.abs() < 3.0
@@ -97,7 +106,7 @@ pub fn audit_routes(world: &CollisionWorld) -> Result<(usize, usize), String> {
         movement::{SPAWN, STANDING_HEIGHT},
     };
     use std::collections::VecDeque;
-    let open = world.active(true);
+    let open: Vec<_> = world.active(true).collect();
     for portal in PORTALS {
         let [a, b] = portal.rooms.map(get);
         let side = Side::ALL.into_iter().find(|side| side.contains(a, *portal));
@@ -145,7 +154,7 @@ pub fn audit_routes(world: &CollisionWorld) -> Result<(usize, usize), String> {
     let spawn = ((SPAWN.xz() - minimum) / STEP).as_uvec2();
     let start = spawn.y as usize * WIDTH + spawn.x as usize;
     let filled = |power| {
-        let bounds = world.active(power);
+        let bounds: Vec<_> = world.active(power).collect();
         let mut queue = VecDeque::from([start]);
         let mut seen = vec![false; WIDTH * DEPTH];
         let mut rooms = vec![false; ROOMS.len()];

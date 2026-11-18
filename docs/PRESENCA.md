@@ -1,5 +1,11 @@
 # A Presença na Estação 07
 
+## v0.0.8 — Além da Escuridão
+
+A chegada do vulto agora depende de oportunidades do diretor e das linhas de visão disponíveis. Na Triagem ele pode ficar imóvel. Em acessos e entre máquinas, pode espiar de lado. Na Decantação, pode cruzar a passarela. Depois de percebida, uma figura fixa ou atrás da estrutura pode se retirar quando sai do campo de visão. A mesma área pode guardar outra aparição na volta.
+
+A ficha que muda de posição e o indicador falso são pistas opcionais. A primeira aparece na mesa da Triagem. O segundo fica no painel de um ramal isolado no Controle. O jogador precisa observar o estado original para que uma mudança possa ocorrer fora de quadro. [Regras e manutenção](CONTINUIDADE-v0.0.8.md)
+
 ## v0.0.7 — Vistoria da Bomba 02
 
 Na ida, o manômetro da Bomba 02 serve de referência para a vistoria. A segunda leitura libera a comporta. A volta pelo mesmo espaço dá significado a uma mudança no ambiente, seguindo o princípio de tornar um lugar familiar antes de introduzir a anomalia. [Japan Game Awards sobre The Exit 8](https://awards.cesa.or.jp/2024/en/year/prize/14.html) · [Rayll Studios sobre Ironbark Lookout](https://store.steampowered.com/app/2506160/Fears_to_Fathom_-_Ironbark_Lookout/)
@@ -31,7 +37,7 @@ Na v0.0.5, A Presença é uma silhueta preta e irregular. O fundo aparece atrav�
 - No retrospecto de *Amnesia*, Thomas Grip descreveu jogadores reagindo a ruídos vagos que lembravam passos. A estação agora tem passos espaçados, batidas em canos, arrasto metálico e goteiras com pausas irregulares entre eles. [Frictional Games sobre nove anos fazendo jogos de terror](https://frictionalgames.com/2019-10-9-years-9-lessons-on-horror/)
 - A equipe de *Dead Space* usou áreas pequenas de luz para dar peso aos trechos escuros entre elas. A Estação 07 usa a mesma ideia de contraste para deixar pisos, portas e máquinas dependerem do feixe da lanterna fora das áreas iluminadas. [Motive sobre iluminação e ritmo em Dead Space](https://www.ea.com/able/news/inside-dead-space-4-the-intensity-director)
 
-## Comportamento na partida
+## Comportamento na v0.0.5
 
 - Cinco pontos têm aparições possíveis. Cada um exige linha de visão e começa a cerca de 14 a 28 m da câmera. Aproximar-se apaga a figura antes de chegar a 12 m. Cada ponto rende uma aparição por tentativa, com mais de 20 segundos de intervalo entre elas.
 - A lanterna tem um feixe concentrado e uma borda suave. Origem, direção e sombras acompanham a câmera. As placas e luminárias dão referências entre os trechos em que o jogador precisa iluminar o chão.
