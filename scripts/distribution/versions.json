@@ -1,0 +1,74 @@
+[
+  {
+    "version": "0.0.1",
+    "title": "Protótipo Windows",
+    "commit": "b3d9af1",
+    "exeSha256": "6892419c638d202e1777c16866dd91a4a62c81c6928b671332d83ac9ea87b28f",
+    "zipSha256": "9b4d9ca9f85f7f583c2fe950691d41264d53b03badb35bb8183df3fa2ebe4d90",
+    "changelog": "Corredor inicial em primeira pessoa, lanterna, fusível, painel, saída, colisão cinemática e ajustes de conforto.",
+    "known": "Mapa de protótipo curto e cenário procedural."
+  },
+  {
+    "version": "0.0.2",
+    "title": "Preferências e diagnóstico",
+    "commit": "58e641c",
+    "exeSha256": "cad047d3bd6ba97e045e67f6edb8b08fbf6442facb3846397493f4c757cf387f",
+    "zipSha256": "4ce8b2252c4606a78b9d7a5c8c5af8ad68dc2e040ce376ab545a365c5841ab55",
+    "changelog": "Configuração persistente, remapeamento em `settings.cfg` e registros locais de tempo de quadro.",
+    "known": "Remapeamento pelo arquivo. O registro de quadros é diagnóstico e não define desempenho mínimo."
+  },
+  {
+    "version": "0.0.3",
+    "title": "Ambientação sonora",
+    "commit": null,
+    "exeSha256": "6d05df15c7c6f4a9abcedef34a4fdb6f60a13d7bd50622ea8769fb0fae4dbc27",
+    "zipSha256": "aabf7478308c09db057876432b0dbbc6937017723efcce3482b017f923017145",
+    "changelog": "Áudio espacial procedural, volta à oficina, silêncio localizado e iluminação de alívio na saída.",
+    "known": "Posicionamento estéreo simplificado e cenário compacto."
+  },
+  {
+    "version": "0.0.4",
+    "title": "Estação de Bombeamento 07",
+    "commit": null,
+    "exeSha256": "e683550b55211a001718ac03589ccdd1b6c543610b6b52abc88878903b999b2c",
+    "zipSha256": "37b188b75af06b2efebef38f36a9339909c0c4da5f95432704fa82896f44ebdd",
+    "changelog": "Expansão para 15 setores, rotas laterais, materiais e sinalização procedurais, visor com VHS ajustável.",
+    "known": "Exploração experimental, com iluminação e legibilidade dependentes do trajeto."
+  },
+  {
+    "version": "0.0.5",
+    "title": "A Presença, lanterna e áudio",
+    "commit": null,
+    "exeSha256": "57bf99df9eae6e331c1275f83935b2643d876b84a134f51d47ab1aec9bc641d8",
+    "zipSha256": "ad356109c24da2d112c14503bf356b85cdc84736fde066d1eb513fd2ced43306",
+    "changelog": "Primeira silhueta da Presença, feixe da lanterna revisado e ruídos ocasionais posicionados no mapa.",
+    "known": "Aparições discretas podem passar despercebidas durante a exploração."
+  },
+  {
+    "version": "0.0.6",
+    "title": "Visibilidade e detalhes da estação",
+    "commit": null,
+    "exeSha256": "106f7f6637475df8dc01e05ac5ba00a3b597d36af2882b88df85075a9096fd2f",
+    "zipSha256": "35c6e9606e4cb5bab96aa680a9c2c2c14b2d6ad499db7256463d4e97f3fef6e2",
+    "changelog": "Escuridão à distância, seis pontos de aparição, ventiladores e placas em movimento, acabamento de quadros e painéis.",
+    "known": "Os encontros ainda dependem de distância, direção e linha de visão."
+  },
+  {
+    "version": "0.0.7",
+    "title": "Vistoria da Bomba 02",
+    "commit": "6065b69",
+    "exeSha256": "5899fb27b5d351f48b9b87a5a946eeaed7f7da5b5627a9399391c0133866ec69",
+    "zipSha256": "762a1986cc3b19455f5bf95aa8fa1d6dcfcf73e4951f361295e4238a8aa0fc6b",
+    "changelog": "Duas leituras e rearme da Bomba 02, travessia na Decantação, dez pontos de aparição e gravação opcional no Controle.",
+    "known": "A câmera fixa usa uma composição autoral e a missão é uma vistoria solo."
+  },
+  {
+    "version": "0.0.8",
+    "title": "Além da Escuridão",
+    "commit": "24f782f",
+    "exeSha256": "a54211a500bc23c9a5ea7fe48ac0290cf69a7b1b426328f60aca181bd6ebbe02",
+    "zipSha256": "575738194ea5b69e5d2c9654b55493ab7d7df85dfbc94b163b211c671c409cb3",
+    "changelog": "Diretor de terror, novas poses e retirada do vulto fora de quadro, duas ilusões, variantes sonoras, VHS revisto e registros contraditórios. **Versão recomendada para testes.**",
+    "known": "O impacto do terror, o conforto e o desempenho em sessões livres ainda precisam de avaliação manual."
+  }
+]

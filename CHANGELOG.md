@@ -1,5 +1,11 @@
 # Changelog
 
+## Distribuição Windows x64
+
+- Os oito pré-lançamentos históricos usam o mesmo inicializador nativo, com verificação de dependências e registro de diagnóstico.
+- Os pacotes de jogador reutilizam os executáveis originais. Cada ZIP tem SHA-256 e contém os arquivos necessários para jogar.
+- A recuperação e a publicação são documentadas em [Distribuição portátil](docs/DISTRIBUICAO.md).
+
 ## v0.0.8 — Além da Escuridão
 
 - Diretor local de terror com tranquilidade, suspeita, tensão e alívio. Considera a fase da vistoria, o setor, revisitas, velocidade, olhar e eventos recentes. Algumas janelas de expectativa passam em silêncio.

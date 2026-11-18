@@ -77,6 +77,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "ainda-vivo-launcher"
+version = "1.0.0"
+dependencies = [
+ "ash",
+ "windows-sys 0.61.2",
+]
+
+[[package]]
 name = "ainda_vivo_core"
 version = "0.0.1"
 dependencies = [

@@ -8,6 +8,8 @@ Protótipo real para Windows, feito em Rust + Bevy. Direção: usuário. Program
 
 ## Jogar
 
+Para jogar uma versão publicada, baixe o pacote Windows em [GitHub Releases](https://github.com/mgueoss/ainda-vivo/releases), extraia e abra **AINDA-VIVO.exe**. A [v0.0.8](https://github.com/mgueoss/ainda-vivo/releases/tag/v0.0.8) é a versão recomendada para testes. [Distribuição portátil e dependências](docs/DISTRIBUICAO.md)
+
 Abra **JOGAR.cmd** para iniciar `windows/ainda-vivo-v0.0.8.exe` offline. Para acompanhar e salvar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
 
 Sem executável pronto, o mesmo atalho compila e executa. A primeira compilação baixa as bibliotecas oficiais do motor; não baixa modelos, texturas, áudio ou pacotes de jogo. Compilações seguintes reaproveitam o cache.

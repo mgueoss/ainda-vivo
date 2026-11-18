@@ -7,7 +7,7 @@ publish = false
 description = "AINDA VIVO — protótipo Windows em primeira pessoa"
 
 [workspace]
-members = ["crates/ainda_vivo_core"]
+members = ["crates/ainda_vivo_core", "crates/ainda_vivo_launcher"]
 resolver = "3"
 
 [dependencies]
@@ -37,6 +37,12 @@ strip = "debuginfo"
 [profile.test]
 opt-level = 1
 debug = 0
+
+[profile.launcher]
+inherits = "release"
+opt-level = "s"
+lto = false
+strip = "symbols"
 
 [[bin]]
 name = "ainda-vivo"
