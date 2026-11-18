@@ -1,0 +1,8 @@
+[package]
+name = "ainda_vivo_core"
+version = "0.0.1"
+edition = "2024"
+publish = false
+
+[dependencies]
+bevy_math = { version = "=0.18.1", default-features = false, features = ["std"] }

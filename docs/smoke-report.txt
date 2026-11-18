@@ -1,0 +1,5 @@
+AINDA VIVO v0.0.1
+render/integration smoke: PASS
+frames: 400
+checks: movement, grounding, wall collision, pause, crouch, fuse ray + E, wall occlusion, panel ray + E, gate traversal, exit, restart, finite camera
+failures: []

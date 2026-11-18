@@ -1,0 +1,86 @@
+# AINDA VIVO — v0.0.5
+
+A Presença espreita de longe na **Estação de Bombeamento 07**. A lanterna (**F**) ilumina o caminho entre as luminárias e, de vez em quando, passos, batidas, arrastos e gotas surgem em algum ponto da estação. [Pesquisa e decisões de ambientação](docs/PRESENCA.md)
+
+O corredor leva à **Estação de Bombeamento 07**, com 15 setores, rotas laterais e cerca de 6.100 m² de planta. A tecla **F4** alterna o VHS entre suave, forte e desligado. O menu da pausa também oferece controle do VHS e do volume. [Detalhes do mapa](docs/ESTACAO-07.md)
+
+Protótipo real para Windows, feito em Rust + Bevy. Direção: usuário. Programação: IA, com decisões registradas aqui. PC primeiro; Android e LAN depois.
+
+## Jogar
+
+Abra **JOGAR.cmd** para iniciar `windows/ainda-vivo-v0.0.5.exe` offline. Para acompanhar e salvar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
+
+Sem executável pronto, o mesmo atalho compila e executa. A primeira compilação baixa as bibliotecas oficiais do motor; não baixa modelos, texturas, áudio ou pacotes de jogo. Compilações seguintes reaproveitam o cache.
+
+No menu, clique em **INICIAR EXPEDIÇÃO** ou pressione **Enter**. Recolha o fusível na oficina à esquerda com **E**. Cruze a nave de bombas, siga as placas **ELÉTRICA**, restaure a energia no quadro geral e contorne a bacia de decantação para alcançar a saída. A nave tem ligações com as alas laterais e a triagem tem uma planta de orientação.
+
+| Controle | Ação |
+|---|---|
+| WASD / mouse | Mover / olhar |
+| Shift | Correr |
+| Ctrl esquerdo ou C, segurado | Agachar |
+| Espaço | Pular |
+| E | Interagir com o objeto sob a mira, até 2,4 m |
+| F | Ligar/desligar a lanterna |
+| Esc | Pausar/continuar e liberar o mouse |
+| Enter | Iniciar/continuar |
+| F3 | Mostrar/ocultar FPS e diagnóstico |
+| F4 | Alternar o modo VHS |
+
+O jogo pausa ao perder o foco. Fechar a janela encerra o programa. O menu permite reiniciar, ajustar sensibilidade e campo de visão e alternar VSync e balanço.
+
+## Conforto e desempenho
+
+- Balanço desligado por padrão. A opção suave desloca a câmera verticalmente em no máximo 6 mm; não inclina o horizonte.
+- O VHS simula granulação fina, linhas de fita, separação discreta de cor e leve deslocamento horizontal no rodapé. O efeito age na cena 3D, com o HUD e o menu legíveis. O modo desligado remove o passe gráfico.
+- Campo de visão **vertical** ajustável de 55° a 80°; inicial 65°. Sensibilidade ajustável no menu. Preferências são salvas automaticamente.
+- Física fixa em 60 Hz, interpolação visual e aceleração suave. VSync ligado inicialmente; FPS desbloqueável no menu.
+- Janela inicial de 1280 × 720, redimensionável. Lanterna com sombras, luminárias locais e texturas procedurais.
+- Referência de direção: Ryzen 5 5600G, GTX 1660 Super, 16 GB. Não é uma garantia de FPS; medições reais ficam em `docs/VALIDACAO.md`.
+
+## Desenvolvimento
+
+Requisitos: Windows x64, Rust estável com Cargo, Visual Studio C++ Build Tools e Windows SDK. O ambiente original tem Rust/Cargo 1.97.1 e Visual Studio 2022 Community. Não é necessário instalar Blender para esta versão.
+
+Na pasta do projeto, usando PowerShell:
+
+```powershell
+.\scripts\dev.ps1 -Action Run
+.\scripts\dev.ps1 -Action Build
+.\scripts\dev.ps1 -Action Test
+.\scripts\dev.ps1 -Action Check
+.\scripts\dev.ps1 -Action Smoke
+```
+
+Para reduzir a carga durante a revisão ou compilação, acrescente `-Jobs 1` ao comando do script.
+
+O script usa `D:\CodexBuilds\ainda-vivo-v0.0.1` quando D: existe. No PC original, C: tinha apenas cerca de 600 MB livres; cache, compilação, temporários e logs ficam no D:. Sem D:, usa `target/local-build` no próprio projeto. Reserve alguns GB para compilar, além do espaço do compilador. Para escolher outra pasta **nova ou pertencente ao projeto**:
+
+```powershell
+.\scripts\dev.ps1 -Action Run -BuildRoot 'E:\MeusBuilds\AindaVivo'
+```
+
+Os comandos Cargo convencionais também funcionam, desde que haja espaço no disco do cache e de `target`:
+
+```powershell
+cargo run --locked
+cargo test --workspace --locked
+cargo fmt --all -- --check
+cargo clippy --workspace --all-targets --locked -- -D warnings
+```
+
+Bevy está fixado em **0.18.1**, com as dependências travadas no `Cargo.lock`. O áudio é sintetizado localmente, as texturas são procedurais e o efeito VHS é incorporado no executável. O jogo funciona offline após a compilação.
+
+## Escopo e limitações
+
+O protótipo inclui exploração, corrida, agachamento, pulo, colisões, lanterna, interação, um objetivo curto, menu, pausa e diagnóstico. Durante a expedição, a iluminação e a ambiência reagem ao retorno da oficina e à energia restaurada. A Presença aparece brevemente em pontos distantes com linha de visão e se dissolve quando o jogador fixa o olhar.
+
+O controlador usa uma caixa cinemática de 54 cm de largura contra caixas estáticas alinhadas aos eixos, com varredura contínua e deslizamento. Não é uma simulação de corpos rígidos: não suporta rampas, escadas automáticas, empurrar objetos, plataformas móveis ou colisores rotacionados. Não inserir essas geometrias sem ampliar e testar a física. Agachar mantém os pés no chão e impede levantar dentro de uma travessa baixa.
+
+Sem salvamento de progresso, multiplayer, Android, calibração automática, instalador de conteúdo ou download interno. Ilusões individuais, morte silenciosa e campanha são diretrizes futuras, não funcionalidades já implementadas.
+
+Veja [arquitetura](docs/ARQUITETURA.md), [validação](docs/VALIDACAO.md) e [próximos passos](docs/PROXIMOS_PASSOS.md).
+
+## Referências técnicas
+
+APIs conferidas na [documentação oficial do Bevy 0.18.1](https://docs.rs/bevy/0.18.1/bevy/) e nos exemplos que acompanham essa versão. Recursos ativados: [lista de features](https://docs.rs/crate/bevy/0.18.1/features). A interface lê Consolas ou Segoe UI já instalada no Windows, para mostrar os acentos corretamente; nenhum arquivo dessas fontes é copiado ou distribuído. Se ambas faltarem, usa a fonte limitada do Bevy. Os demais elementos visuais são procedurais.
