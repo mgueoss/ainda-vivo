@@ -49,6 +49,7 @@ enum Sound {
     Contact,
     Trailing,
     Reception,
+    ServiceEcho,
 }
 
 #[derive(Component)]
@@ -84,6 +85,10 @@ impl Emitter {
             Sound::Trailing => 4,
             _ => 0,
         }
+    }
+
+    pub fn service_echo(&self) -> bool {
+        matches!(self.sound, Sound::ServiceEcho)
     }
 }
 
@@ -224,13 +229,37 @@ pub struct Gait {
     attempt: u64,
     revision: u32,
     reception_played: bool,
+    echoed: Option<CadenceEcho>,
+}
+
+struct CadenceEcho {
+    source: Vec3,
+    start: f32,
+    offsets: [f32; 3],
+    step: usize,
+}
+
+pub(super) fn service_source(feet: Vec3, yaw: f32) -> Option<Vec3> {
+    let forward = Quat::from_rotation_y(yaw) * Vec3::NEG_Z;
+    [
+        Vec3::new(24.70, 0.16, -53.55),
+        Vec3::new(31.40, 0.15, -60.65),
+        Vec3::new(12.25, 0.15, -52.50),
+        Vec3::new(1.15, 0.16, -51.95),
+    ]
+    .into_iter()
+    .find(|source| {
+        let offset = (*source - feet).with_y(0.0);
+        (3.35 * 3.35..=10.5 * 10.5).contains(&offset.length_squared())
+            && forward.dot(offset.normalize_or_zero()) < 0.16
+    })
 }
 
 pub fn emit(
     mut commands: Commands,
     mut audio: ResMut<Assets<Voice>>,
-    session: Res<Session>,
-    (scene, threat): (Res<Atmosphere>, Res<Threat>),
+    mut session: ResMut<Session>,
+    (scene, threat, mut director): (Res<Atmosphere>, Res<Threat>, ResMut<Director>),
     player: Res<LocalPlayer>,
     bank: Res<SoundBank>,
     mut gait: Local<Gait>,
@@ -246,6 +275,42 @@ pub fn emit(
     let previous = gait.previous.replace(feet).unwrap_or(feet);
     if session.screen != Screen::Playing {
         return;
+    }
+    let now = session.elapsed;
+    if !threat.active()
+        && !scene.episode.holding_silence()
+        && session.progress().phase() >= Phase::Electrical
+        && director.allows(Cue::Sound, now)
+        && let Some(pattern) = session
+            .memory()
+            .echo_pattern(now, session.expedition.observer().distortion_ready(now))
+        && let Some(source) = service_source(feet, player.yaw)
+    {
+        gait.echoed = Some(CadenceEcho {
+            source,
+            start: now,
+            offsets: [0.0, pattern[0], pattern[0] + pattern[1]],
+            step: 0,
+        });
+        session.memory_mut().heard_echo(now);
+        director.claim(Cue::Sound, now);
+    }
+    if let Some(echo) = &mut gait.echoed
+        && now >= echo.start + echo.offsets[echo.step]
+    {
+        one_shot(
+            &mut commands,
+            &mut audio,
+            &session,
+            bank.trailing[(echo.step + 1) % 3].clone(),
+            Sound::ServiceEcho,
+            echo.source + Vec3::Z * (echo.step as f32 * 0.12),
+            0.8,
+        );
+        echo.step += 1;
+        if echo.step == echo.offsets.len() {
+            gait.echoed = None;
+        }
     }
     if let Some(position) = threat.warning {
         one_shot(
@@ -321,6 +386,7 @@ pub fn emit(
     gait.distance += travelled;
     if gait.distance >= stride {
         gait.distance -= stride;
+        session.memory_mut().footstep(now);
         let side = if gait.index.is_multiple_of(2) {
             -0.14
         } else {
@@ -446,6 +512,7 @@ pub fn emit_incidents(
         || atmosphere.episode.holding_silence()
         || presence.active()
         || threat.active()
+        || crate::scene::station::lamp_refuge(session.memory().desk_light, player.body.feet)
         || session.false_exit.is_some()
     {
         trail.until = 0.0;
@@ -574,6 +641,7 @@ pub fn mix(
                     0.48 * (1.0 - 0.76 * scene.quiet)
                         * (1.0 - 0.26 * scene.relief)
                         * (1.0 - 0.23 * scene.receipt)
+                        * (1.0 - 0.23 * scene.refuge)
                         * (1.0 - 0.65 * director.hush)
                         * (1.0 - 0.70 * scene.episode.pump_hush.max(scene.episode.rail_hush))
                 }
@@ -595,6 +663,7 @@ pub fn mix(
                 Sound::Contact => 0.66,
                 Sound::Trailing => 0.47,
                 Sound::Reception => 0.47,
+                Sound::ServiceEcho => 0.72,
             };
         if matches!(emitter.sound, Sound::Room) {
             let centre = gain * std::f32::consts::FRAC_1_SQRT_2;

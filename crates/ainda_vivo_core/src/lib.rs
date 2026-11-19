@@ -1,6 +1,7 @@
 //! Simulation only: no window, operating system, renderer or network transport.
 //! The desktop adapter translates hardware input into PlayerCommand.
 pub mod collision;
+pub mod memory;
 pub mod movement;
 pub mod reality;
 pub mod story;

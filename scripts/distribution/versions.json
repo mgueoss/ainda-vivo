@@ -79,5 +79,14 @@
     "zipSha256": null,
     "changelog": "A vistoria da Bomba 02 ganha Despertar, aparições mais atentas ao trajeto, passos atrás do operador e novas contradições na Estação 07. A atualização estreia a captura silenciosa e desfechos experimentais. O menu de pausa pede confirmação para Despertar.",
     "known": "Experiência solo experimental. A frequência de encontros, o impacto do terror e o conforto em partidas livres ainda precisam de avaliação humana. A instalação real do Visual C++ em Windows limpo segue pendente de teste."
+  },
+  {
+    "version": "0.0.10",
+    "title": "Ecos do Desaparecimento",
+    "commit": null,
+    "exeSha256": "5fa3dc4b8d27ac15431bc3cbaefedf7234580a0954d36b10042ab9065ae64938",
+    "zipSha256": null,
+    "changelog": "A Estação 07 passa a lembrar o que você observou, leu e ouviu. Investigue a segunda via azul da OS 17 no Arquivo, use a luminária de mesa e procure indícios nos registros da Elétrica e do Controle. A vistoria da Bomba 02 continua disponível em qualquer rota. Despertar pode oferecer uma retomada única no posto.\n\n[Changelog completo](https://github.com/mgueoss/ainda-vivo/blob/v0.0.10/CHANGELOG.md) · [Testes e capturas reais](https://github.com/mgueoss/ainda-vivo/blob/v0.0.10/docs/VALIDACAO-v0.0.10.md)",
+    "known": "Experiência solo experimental com progresso em memória. A cadeia da OS 17 pode ficar incompleta em uma passagem rápida. Ritmo e conforto em partidas livres e a instalação efetiva do Visual C++ em Windows limpo ainda precisam de avaliação."
   }
 ]

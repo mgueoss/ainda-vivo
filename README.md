@@ -1,6 +1,6 @@
-# AINDA VIVO — v0.0.9 · Falsa Realidade
+# AINDA VIVO — v0.0.10 · Ecos do Desaparecimento
 
-A vistoria da **Bomba 02** leva o jogador à nave antes e depois de rearmar o quadro geral. O posto da Elétrica guarda instruções para o retorno. Preste atenção ao que mudou entre uma passagem e outra. [Changelog](CHANGELOG.md) · [Documentação de continuidade com spoilers](AINDA-VIVO-HANDOFF-v0.0.9.md)
+A vistoria da **Bomba 02** leva o jogador à nave antes e depois de rearmar o quadro geral. Para investigar o turno anterior, leia a segunda via azul da **OS 17** no Arquivo. Dê atenção ao relé auxiliar na Elétrica e à Câmera 02 no Controle. [Changelog](CHANGELOG.md) · [Documentação de continuidade com spoilers](AINDA-VIVO-HANDOFF-v0.0.10.md)
 
 O corredor leva à **Estação de Bombeamento 07**, com 15 setores, rotas laterais e cerca de 6.100 m² de planta. A tecla **F4** alterna o VHS entre suave, forte e desligado. O menu da pausa também oferece controle do VHS e do volume. [Detalhes do mapa](docs/ESTACAO-07.md)
 
@@ -8,15 +8,15 @@ Protótipo Windows feito em Rust e Bevy. O usuário dirige o projeto. A priorida
 
 ## Jogar
 
-Para jogar uma versão publicada, baixe o pacote Windows, extraia e abra **AINDA-VIVO.exe**. A v0.0.9 é a versão recomendada para testes. [GitHub Release v0.0.9](https://github.com/mgueoss/ainda-vivo/releases/tag/v0.0.9) · [Distribuição portátil e dependências](docs/DISTRIBUICAO.md)
+Para jogar, baixe o pacote Windows, extraia e abra **AINDA-VIVO.exe**. A v0.0.10 é a versão recomendada para testes. [GitHub Release v0.0.10](https://github.com/mgueoss/ainda-vivo/releases/tag/v0.0.10) · [Distribuição portátil e dependências](docs/DISTRIBUICAO.md)
 
-No checkout com o binário local, **JOGAR.cmd** inicia `windows/ainda-vivo-v0.0.9.exe`. Para compilar pelo fonte e acompanhar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
+No checkout com o binário local, **JOGAR.cmd** inicia `windows/ainda-vivo-v0.0.10.exe`. Para compilar pelo fonte e acompanhar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
 
 Sem executável pronto, o mesmo atalho compila e executa. A primeira compilação baixa as bibliotecas oficiais do motor; não baixa modelos, texturas, áudio ou pacotes de jogo. Compilações seguintes reaproveitam o cache.
 
 No menu, clique em **INICIAR EXPEDIÇÃO** ou pressione **Enter**. Pegue o fusível na oficina à esquerda. Use **E** no manômetro da **Bomba 02**, siga as indicações de **ELÉTRICA** e rearme o quadro geral. Volte à mesma bomba para registrar a segunda leitura e liberar a comporta. A saída fica depois da bacia de decantação. O Arquivo e a sala de Controle guardam registros opcionais.
 
-**Despertar** fica no menu de pausa e pede confirmação antes de interferir no registro atual.
+**Despertar** fica no menu de pausa e pede confirmação. Use **E** no interruptor da luminária para iluminar a mesa do Arquivo.
 
 | Controle | Ação |
 |---|---|
@@ -77,11 +77,11 @@ Bevy está fixado em **0.18.1**, com as dependências travadas no `Cargo.lock`. 
 
 ## Escopo e limitações
 
-O protótipo inclui exploração em primeira pessoa, uma vistoria completa com ida e volta, registros opcionais, menu, pausa e diagnóstico. A câmera fixa da nave produz um quadro que pode ser consultado no Controle. Os registros do Arquivo e do Controle contradizem o horário de saída de um operador.
+O protótipo inclui exploração em primeira pessoa, a vistoria completa, captura silenciosa, Despertar e uma investigação opcional. A câmera fixa da nave produz quadros que podem ser consultados no Controle.
 
 O controlador usa uma caixa cinemática de 54 cm de largura contra caixas estáticas alinhadas aos eixos, com varredura contínua e deslizamento. Não é uma simulação de corpos rígidos: não suporta rampas, escadas automáticas, empurrar objetos, plataformas móveis ou colisores rotacionados. Não inserir essas geometrias sem ampliar e testar a física. Agachar mantém os pés no chão e impede levantar dentro de uma travessa baixa.
 
-As ilusões visuais já têm um estado local por tentativa. Morte silenciosa, campanha expandida, salvamento de progresso, Android, LAN e distribuição em pacotes ficam para versões futuras.
+O progresso e as memórias ficam na sessão atual. Campanha expandida, salvamento em disco, Android e LAN seguem como próximos passos.
 
 Veja [arquitetura](docs/ARQUITETURA.md), [validação](docs/VALIDACAO.md) e [próximos passos](docs/PROXIMOS_PASSOS.md).
 

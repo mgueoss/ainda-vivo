@@ -215,6 +215,7 @@ pub struct Presence {
     revision: u32,
     pub contact: Option<Trace>,
     seen: [bool; SITES.len()],
+    witnessed: Option<f32>,
     appearances: [u8; SITES.len()],
     last_site: Option<(usize, f32)>,
     retired_unseen: u32,
@@ -229,6 +230,7 @@ struct Opportunity {
     revisit: bool,
     offset: usize,
     heading: Option<Vec3>,
+    recall_triage: bool,
 }
 
 #[cfg(test)]
@@ -237,6 +239,7 @@ const OPEN: Opportunity = Opportunity {
     revisit: false,
     offset: 0,
     heading: None,
+    recall_triage: false,
 };
 
 impl Presence {
@@ -291,6 +294,7 @@ impl Presence {
                             last != *index || elapsed - started > 21.0
                         });
                     (!self.seen[*index] && phase_matches
+                        || *index == 0 && opportunity.recall_triage && self.appearances[0] <= 1
                         || can_return && (phase_matches || *index == 0 && phase == Phase::Return))
                         && site.available(camera, lens, world, gate_open)
                 })
@@ -357,6 +361,9 @@ impl Presence {
         if sighting.framed_for < 0.46 && alpha >= 0.48 && in_view {
             sighting.framed_for += (elapsed - sighting.checked_at).min(0.075);
             self.seen[sighting.site] = sighting.framed_for >= 0.46;
+            if self.seen[sighting.site] {
+                self.witnessed = Some(elapsed);
+            }
             if self.seen[sighting.site] && matches!(sighting.site, ELECTRICAL_RETURN | WEST_BAY) {
                 self.contact = Some(Trace {
                     at: elapsed,
@@ -410,7 +417,7 @@ type SilhouetteView<'w, 's> = Query<
 >;
 
 pub fn update(
-    (session, player): (Res<Session>, Res<crate::app::LocalPlayer>),
+    (mut session, player): (ResMut<Session>, Res<crate::app::LocalPlayer>),
     world: Res<CollisionWorld>,
     mut director: ResMut<Director>,
     cameras: Query<(&Transform, &Projection), With<MainCamera>>,
@@ -446,11 +453,22 @@ pub fn update(
                 offset: director.order,
                 heading: (director.revisit && player.body.velocity.xz().length_squared() > 2.0)
                     .then(|| player.body.velocity.with_y(0.0).normalize_or_zero()),
+                recall_triage: session.progress().phase() == Phase::Exit
+                    && session.memory().returned(super::station::TRIAGE_ID)
+                    && !session.memory().recent_sighting(session.elapsed)
+                    && matches!(
+                        session.memory().service,
+                        ainda_vivo_core::memory::ServiceTrail::Checked(_)
+                            | ainda_vivo_core::memory::ServiceTrail::Reconciled
+                    ),
             },
         )
     {
         if !was_active {
             director.claim(Cue::Presence, session.elapsed);
+        }
+        if let Some(at) = presence.witnessed.take() {
+            session.memory_mut().note_sighting(at);
         }
         *transform = pose;
         *visibility = Visibility::Visible;

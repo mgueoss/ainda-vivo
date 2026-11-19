@@ -61,7 +61,9 @@ pub fn read_input(
     }
     if keys.just_pressed(KeyCode::Enter) {
         match session.screen {
-            Screen::Menu | Screen::Complete => restart(&mut session, &mut player, &mut comfort),
+            Screen::Menu | Screen::Complete => {
+                continue_or_restart(&mut session, &mut player, &mut comfort)
+            }
             Screen::Paused if !session.wake_confirmation => session.screen = Screen::Playing,
             Screen::Paused => (),
             Screen::Playing => (),

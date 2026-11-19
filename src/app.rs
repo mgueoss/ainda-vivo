@@ -1,7 +1,8 @@
 use ainda_vivo_core::{
     collision::Aabb,
+    memory::{FieldMemory, ServiceTrail},
     movement::{PlayerBody, PlayerCommand},
-    reality::{Awakening, Expedition, Outcome},
+    reality::{Awakening, Expedition, Outcome, SafePoint},
     story::{Action, Progress},
 };
 use bevy::{
@@ -60,10 +61,39 @@ impl Session {
         self.expedition.view()
     }
 
+    pub fn memory(&self) -> &FieldMemory {
+        &self.expedition.observer().memory
+    }
+
+    pub fn memory_mut(&mut self) -> &mut FieldMemory {
+        self.expedition.memory_mut()
+    }
+
     pub fn act(&mut self, action: Action) {
-        let message = self
+        let mut message = self
             .expedition
             .act(action, crate::scene::station::RETURN_POST);
+        let now = self.elapsed;
+        let can_review = self.progress().recording_reviewed();
+        let memory = self.memory_mut();
+        memory.note_action(action, now);
+        match action {
+            Action::CheckRelay
+                if matches!(
+                    memory.service,
+                    ServiceTrail::Checked(_) | ServiceTrail::Reconciled
+                ) =>
+            {
+                message = "Via do técnico, 03:19. Serviço concluído. A assinatura de Borges ainda borra. Conferência indicada na Câmera 02.";
+            }
+            Action::ReviewRecording if can_review && memory.reconcile(now) => {
+                message = "Câmera 02, 03:17. A via já estava assinada na bancada. O relé ainda constava lacrado.";
+            }
+            _ => (),
+        }
+        if message.is_empty() {
+            return;
+        }
         self.say(message);
     }
 
@@ -86,8 +116,9 @@ impl Session {
                 info!("Expedição concluída em {:.1}s", self.elapsed);
             }
             Some(Outcome::PerceivedExit) => {
+                let linked = self.memory().service == ServiceTrail::Reconciled;
                 self.false_exit = Some(ExitPresentation::Receipt {
-                    reveal_at: self.elapsed + 4.0,
+                    reveal_at: self.elapsed + if linked { 5.5 } else { 4.0 },
                 });
                 self.say("Portaria: baixa recebida. Pode seguir.");
             }
@@ -99,7 +130,12 @@ impl Session {
         if matches!(self.false_exit, Some(ExitPresentation::Receipt { reveal_at }) if self.elapsed >= reveal_at)
         {
             self.false_exit = Some(ExitPresentation::Contradiction);
-            self.say("Portaria: Ordem 07. O seu turno ainda não começou.");
+            let message = if self.memory().service == ServiceTrail::Reconciled {
+                "Portaria, 03:17. A baixa foi emitida antes da entrada. A via de Borges continua em serviço."
+            } else {
+                "Portaria: Ordem 07. O seu turno ainda não começou."
+            };
+            self.say(message);
         }
     }
 
@@ -117,17 +153,7 @@ pub fn awaken(session: &mut Session, player: &mut LocalPlayer) {
     session.wake_confirmation = false;
     match session.expedition.awaken() {
         Awakening::Recovered(post) => {
-            *player = LocalPlayer {
-                body: PlayerBody {
-                    feet: post.feet,
-                    previous_feet: post.feet,
-                    ..default()
-                },
-                yaw: post.yaw,
-                pitch: post.pitch,
-                eye_height: 1.62,
-                ..default()
-            };
+            *player = player_at_post(post);
             session.screen = Screen::Playing;
             session.perception_revision += 1;
             session.false_exit = None;
@@ -140,6 +166,35 @@ pub fn awaken(session: &mut Session, player: &mut LocalPlayer) {
             player.look_armed = false;
         }
         Awakening::Unavailable => (),
+    }
+}
+
+fn player_at_post(post: SafePoint) -> LocalPlayer {
+    LocalPlayer {
+        body: PlayerBody {
+            feet: post.feet,
+            previous_feet: post.feet,
+            ..default()
+        },
+        yaw: post.yaw,
+        pitch: post.pitch,
+        eye_height: 1.62,
+        ..default()
+    }
+}
+
+pub fn continue_or_restart(session: &mut Session, player: &mut LocalPlayer, comfort: &mut Comfort) {
+    if let Some((expedition, post)) = session.expedition.resume_interrupted() {
+        *session = Session {
+            screen: Screen::Playing,
+            attempt: session.attempt.wrapping_add(1),
+            expedition,
+            ..default()
+        };
+        *player = player_at_post(post);
+        session.say("Nova vistoria retomada no posto da Elétrica.");
+    } else {
+        restart(session, player, comfort);
     }
 }
 
@@ -271,6 +326,7 @@ pub fn run() -> bevy::app::AppExit {
         .init_resource::<crate::reality::Threat>()
         .init_resource::<crate::diagnostics::Performance>()
         .init_resource::<crate::smoke::continuity::ContinuitySmoke>()
+        .init_resource::<crate::smoke::echoes::EchoSmoke>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: format!("AINDA VIVO | v{VERSION}"),
@@ -302,7 +358,12 @@ pub fn run() -> bevy::app::AppExit {
             (
                 crate::ui::buttons,
                 crate::desktop::read_input,
-                (crate::smoke::drive, crate::smoke::continuity::drive).chain(),
+                (
+                    crate::smoke::drive,
+                    crate::smoke::continuity::drive,
+                    crate::smoke::echoes::drive,
+                )
+                    .chain(),
                 crate::desktop::update_camera,
                 crate::vhs::update,
                 crate::interaction::interact,
@@ -330,4 +391,47 @@ pub fn run() -> bevy::app::AppExit {
                 .chain(),
         )
         .run()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::scene::station::RETURN_POST;
+
+    #[test]
+    fn the_reconciled_receipt_delays_its_contradiction_without_changing_mission_truth() {
+        let mut session = Session {
+            screen: Screen::Playing,
+            ..default()
+        };
+        for action in [Action::TakeFuse, Action::InspectPump, Action::RestorePower] {
+            session.act(action);
+        }
+        session.elapsed = 20.0;
+        assert!(session.expedition.capture(session.elapsed));
+        session.act(Action::InspectPump);
+        session.memory_mut().service = ServiceTrail::Reconciled;
+        session.cross_exit();
+        assert_eq!(session.screen, Screen::Playing);
+        assert!(!session.expedition.truth().exit_unlocked());
+        session.elapsed = 25.49;
+        session.age_exit_receipt();
+        assert!(matches!(
+            session.false_exit,
+            Some(ExitPresentation::Receipt { .. })
+        ));
+        session.elapsed = 25.5;
+        session.age_exit_receipt();
+        assert_eq!(session.false_exit, Some(ExitPresentation::Contradiction));
+        assert!(session.message.contains("03:17"));
+
+        let mut player = LocalPlayer::default();
+        session.screen = Screen::Paused;
+        crate::ui::request_awakening(&mut session);
+        awaken(&mut session, &mut player);
+        assert_eq!(player.body.feet, RETURN_POST.feet);
+        assert_eq!(session.memory().service, ServiceTrail::Reconciled);
+        assert!(session.false_exit.is_none());
+        assert!(!session.expedition.can_capture());
+    }
 }

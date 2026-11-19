@@ -51,6 +51,8 @@ struct Context {
     protected: bool,
     distortion: bool,
     anomalies: u8,
+    echo_ready: bool,
+    relay_ready: bool,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -261,7 +263,11 @@ impl Director {
             Some(requested)
         } else if roll < 0.12 && now > 14.0 {
             None
-        } else if context.distortion && roll > 0.44 + f32::from(context.anomalies.min(4)) * 0.035 {
+        } else if context.echo_ready {
+            Some(Cue::Sound)
+        } else if context.relay_ready
+            || context.distortion && roll > 0.44 + f32::from(context.anomalies.min(4)) * 0.035
+        {
             Some(Cue::Illusion)
         } else if (context.phase == Phase::Exit || context.speed > 2.65) && roll < 0.83 {
             Some(Cue::Presence)
@@ -308,7 +314,7 @@ impl Director {
 
 pub fn update(
     time: Res<Time>,
-    session: Res<Session>,
+    mut session: ResMut<Session>,
     player: Res<LocalPlayer>,
     atmosphere: Res<Atmosphere>,
     (presence, threat, illusions): (Res<Presence>, Res<Threat>, Res<Illusions>),
@@ -347,10 +353,31 @@ pub fn update(
     if session.screen != Screen::Playing {
         return;
     }
+    let sector = station::sector_id(player.body.feet);
+    if let Some(id) = sector
+        && session.memory().recent_route()[0] != sector
+    {
+        session.memory_mut().enter(id);
+    }
+    let distorted = session
+        .expedition
+        .observer()
+        .distortion_ready(session.elapsed);
+    let memory = session.memory();
+    let echo_ready = memory.echo_pattern(session.elapsed, distorted).is_some()
+        && session.progress().phase() >= Phase::Electrical
+        && crate::atmosphere::sound::service_source(player.body.feet, player.yaw).is_some();
+    let relay_ready = memory.relay_due(session.elapsed, distorted)
+        && player
+            .body
+            .feet
+            .xz()
+            .distance_squared(station::SERVICE_RELAY.xz())
+            < 5.5 * 5.5;
     director.step(
         Context {
             elapsed: session.elapsed,
-            sector: station::sector_id(player.body.feet),
+            sector,
             phase: session.progress().phase(),
             forward: Quat::from_euler(EulerRot::YXZ, player.yaw, player.pitch, 0.0) * Vec3::NEG_Z,
             speed: player.body.velocity.xz().length(),
@@ -358,12 +385,12 @@ pub fn update(
                 || atmosphere.quiet > 0.14
                 || atmosphere.episode.holding_silence()
                 || threat.active()
+                || station::lamp_refuge(memory.desk_light, player.body.feet)
                 || matches!(session.false_exit, Some(ExitPresentation::Receipt { .. })),
-            distortion: session
-                .expedition
-                .observer()
-                .distortion_ready(session.elapsed),
+            distortion: distorted,
             anomalies: illusions.altered,
+            echo_ready,
+            relay_ready,
         },
         time.delta_secs(),
     );
@@ -383,6 +410,8 @@ mod tests {
             protected: false,
             distortion: false,
             anomalies: 0,
+            echo_ready: false,
+            relay_ready: false,
         }
     }
 

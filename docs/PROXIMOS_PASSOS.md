@@ -1,5 +1,7 @@
 # Próximos passos
 
+As etapas abaixo registram o planejamento do primeiro protótipo. As prioridades atuais estão na [documentação de continuidade da v0.0.10](../AINDA-VIVO-HANDOFF-v0.0.10.md#problemas-conhecidos-e-continuidade).
+
 1. **Sessão do diretor:** testar 10–15 minutos e anotar conforto, sensibilidade, luz, leitura dos objetos e qualquer colisão estranha. Informar resolução, VSync e FPS observado. Priorizar correções antes de aumentar o mapa.
 2. **v0.0.2 — base sólida:** persistir preferências, permitir remapear teclas, registrar tempos de quadro por sessão e ampliar testes de interação/oclusão. Adicionar áudio espacial discreto com volume e opção de desligar.
 3. **v0.1 — Presença:** definir comportamento e objetivo narrativo, implementar percepção e navegação verificáveis, morte silenciosa e uma ilusão por jogador. Sem jumpscares baratos nem sacrifício de conforto.

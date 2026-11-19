@@ -1,5 +1,14 @@
 # Changelog
 
+## v0.0.10 — Ecos do Desaparecimento
+
+- A estação registra por onde o operador passou, o que consultou, quais objetos observou e o ritmo dos passos. Uma alteração visual precisa de uma referência que ele realmente tenha visto.
+- A segunda via da OS 17 liga o Arquivo, a Elétrica e o Controle. Passos fora de quadro, a ficha deslocada e um segundo quadro da Câmera 02 deixam pistas sobre Borges. A vistoria da Bomba 02 independe dessa investigação.
+- A luminária do Arquivo oferece uma pausa com transições suaves de luz e de ambiência. A Presença pode voltar à Triagem em rotas que já passaram pelo local.
+- Despertar vivo encerra o registro. Depois de rearmar a Elétrica, o jogador pode iniciar uma única retomada curta no posto com o progresso real.
+- A leitura completa da OS 17 altera o registro final. A baixa da portaria tem um período de alívio antes da contradição.
+- Novos testes de memória e uma rota Windows para validar a cadeia de acontecimentos, os três passos e a retomada. O pacote usa o [inicializador universal](docs/DISTRIBUICAO.md).
+
 ## v0.0.9 — Falsa Realidade
 
 - A Presença pode capturar silenciosamente após uma aproximação perigosa. A vistoria continua na perspectiva do operador.

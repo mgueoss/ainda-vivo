@@ -472,9 +472,33 @@ impl Station<'_, '_, '_, '_> {
         });
         self.sign(
             "POSTO DE RETORNO",
-            super::RETURN_MEMO + Vec3::Y * 0.33,
+            super::RETURN_MEMO + Vec3::new(0.0, 0.33, -0.27),
             Vec2::new(1.35, 0.24),
             -FRAC_PI_2,
+        );
+        let relay = super::SERVICE_RELAY;
+        self.block(
+            "Chassi do relé auxiliar",
+            relay + Vec3::new(0.085, 0.071, 0.0),
+            Vec3::new(0.15, 0.54, 1.52),
+            self.palette.coal.clone(),
+            false,
+        );
+        for offset in [-0.69, 0.69] {
+            self.block(
+                "Fixação do relé auxiliar",
+                relay + Vec3::new(-0.014, 0.21, offset),
+                Vec3::new(0.035, 0.045, 0.045),
+                self.palette.steel.clone(),
+                false,
+            );
+        }
+        self.round(
+            "Conduíte do relé auxiliar",
+            relay + Vec3::new(0.103, 0.30, 0.39),
+            relay + Vec3::new(0.103, 0.85, 0.39),
+            0.063,
+            self.palette.oxide.clone(),
         );
         self.floor_directions("NAVE ↑", Vec2::new(29.63, -56.37), PI);
         self.floor_directions("BOMBAS ↑", Vec2::new(18.80, -52.48), FRAC_PI_2);

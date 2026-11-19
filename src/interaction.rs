@@ -30,9 +30,16 @@ pub fn interact(
     let mut best = REACH;
     let mut target = None;
     for item in &targets {
-        let Some(label) = session.progress().prompt(item.action) else {
+        let Some(mut label) = session.progress().prompt(item.action) else {
             continue;
         };
+        if item.action == Action::ToggleDeskLight {
+            label = if session.memory().desk_light {
+                "apagar luminária da mesa"
+            } else {
+                "acender luminária da mesa"
+            };
+        }
         if let Some(distance) = item.bounds.ray(origin, direction, REACH)
             && distance <= best
         {

@@ -1,9 +1,16 @@
-//! Observer-local dressing. These impressions never own a collider or a mission interaction.
+//! Observer-local dressing. No collider or required objective depends on these variants.
 use crate::{
     app::{CollisionWorld, ExitPresentation, MainCamera, Screen, Session},
     atmosphere::director::{Cue, Director},
+    interaction::Interactable,
+    scene::station::SERVICE_RELAY,
 };
-use ainda_vivo_core::story::Phase;
+pub use ainda_vivo_core::memory::Prop as ImpressionId;
+use ainda_vivo_core::{
+    collision::Aabb,
+    memory::ServiceTrail,
+    story::{Action, Phase},
+};
 use bevy::{light::NotShadowCaster, prelude::*};
 
 pub const FILE: Vec3 = Vec3::new(-6.76, 0.952, -16.50);
@@ -11,13 +18,7 @@ pub const LENS: Vec3 = Vec3::new(23.37, 1.52, -85.63);
 pub const CLOCK: Vec3 = Vec3::new(22.50, 2.37, -85.62);
 pub const RECEIPT_DISPLAY: Vec3 = Vec3::new(0.0, 1.85, -98.48);
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub enum ImpressionId {
-    File,
-    IsolatedCircuit,
-    Clock,
-    ShiftTag,
-}
+const FOUND_FILE: Vec3 = Vec3::new(34.64, 1.13, -55.56);
 
 #[derive(Clone)]
 struct Variant {
@@ -32,7 +33,6 @@ pub struct Impression {
     normal: Variant,
     changed: Variant,
     second: Option<Variant>,
-    noticed: bool,
     stage: u8,
     last_change: f32,
 }
@@ -120,6 +120,8 @@ pub fn setup(
     let lens = Transform::from_translation(LENS);
     let clock = Transform::from_translation(CLOCK);
     let tag = Transform::from_xyz(3.43, 1.67, -57.68);
+    let relay = Transform::from_translation(SERVICE_RELAY)
+        .with_rotation(Quat::from_rotation_y(-std::f32::consts::FRAC_PI_2));
     let sign_mesh = meshes.add(Rectangle::new(0.82, 0.22));
     let clock_skin = ([29, 43, 41], [146, 182, 160]);
     let tag_skin = ([51, 43, 29], [172, 153, 110]);
@@ -169,8 +171,22 @@ pub fn setup(
             ),
             None,
         ),
+        (
+            ImpressionId::Relay,
+            Phase::Fuse,
+            meshes.add(Rectangle::new(1.35, 0.27)),
+            variant(
+                relay,
+                plate("OS 17  CANCELADA", tag_skin, &mut materials, &mut images),
+            ),
+            variant(
+                relay,
+                plate("OS 17  03:19", clock_skin, &mut materials, &mut images),
+            ),
+            None,
+        ),
     ] {
-        commands.spawn((
+        let mut entity = commands.spawn((
             Name::new(format!("{id:?}")),
             Mesh3d(mesh),
             MeshMaterial3d(normal.material.clone()),
@@ -181,12 +197,17 @@ pub fn setup(
                 normal,
                 changed,
                 second,
-                noticed: false,
                 stage: 0,
                 last_change: 0.0,
             },
             NotShadowCaster,
         ));
+        if id == ImpressionId::Relay {
+            entity.insert(Interactable {
+                bounds: Aabb::from_center_size(SERVICE_RELAY, Vec3::new(0.13, 0.30, 1.23)),
+                action: Action::CheckRelay,
+            });
+        }
     }
 
     let display_skin = ([19, 35, 32], [129, 171, 147]);
@@ -222,7 +243,7 @@ type Props<'w, 's> = Query<
 >;
 
 pub fn update(
-    session: Res<Session>,
+    mut session: ResMut<Session>,
     world: Res<CollisionWorld>,
     camera: Query<&Transform, With<MainCamera>>,
     mut director: ResMut<Director>,
@@ -255,22 +276,48 @@ pub fn update(
     let Ok(camera) = camera.single() else { return };
     for (mut impression, mut pose, mut material) in &mut props {
         if restarted {
-            impression.noticed = false;
-            impression.stage = 0;
+            let relay_changed = impression.id == ImpressionId::Relay
+                && matches!(
+                    session.memory().service,
+                    ServiceTrail::Relay(_) | ServiceTrail::Checked(_) | ServiceTrail::Reconciled
+                );
+            let variant = if relay_changed {
+                &impression.changed
+            } else {
+                &impression.normal
+            };
+            *pose = variant.pose;
+            material.0 = variant.material.clone();
+            impression.stage = u8::from(relay_changed);
             impression.last_change = 0.0;
-            *pose = impression.normal.pose;
-            material.0 = impression.normal.material.clone();
         }
         if session.screen != Screen::Playing || session.progress().phase() < impression.phase {
             continue;
         }
         let now = session.elapsed;
+        let stage = impression.stage;
+        let id = impression.id;
+        let view = session.expedition.observer().distortion_ready(now);
+        let can_transfer = matches!(
+            session.memory().service,
+            ServiceTrail::Relay(_) | ServiceTrail::Checked(_) | ServiceTrail::Reconciled
+        ) && session.memory().has_seen(ImpressionId::File);
+        if id == ImpressionId::File && stage < 3 && can_transfer {
+            let destination = FOUND_FILE - camera.translation;
+            if destination.length_squared() < 5.5 * 5.5
+                && camera.forward().dot(destination.normalize_or_zero()) < -0.12
+                && pose.translation.distance_squared(camera.translation) > 12.0 * 12.0
+            {
+                *pose = Transform::from_translation(FOUND_FILE)
+                    .with_rotation(Quat::from_rotation_z(1.46));
+                impression.stage = 3;
+                state.altered += 1;
+                continue;
+            }
+        }
         let next = match impression.stage {
             0 => &impression.changed,
-            1 if session.expedition.observer().distortion_ready(now)
-                && director.revisit
-                && now - impression.last_change > 14.0 =>
-            {
+            1 if view && director.revisit && now - impression.last_change > 14.0 => {
                 let Some(second) = &impression.second else {
                     continue;
                 };
@@ -282,6 +329,7 @@ pub fn update(
         // Only cast an occlusion ray when the player is actually inspecting one.
         let offset = pose.translation + Vec3::Y * 0.032 - camera.translation;
         if offset.length_squared() > 5.5 * 5.5 {
+            session.memory_mut().look(id, stage, now, false);
             continue;
         }
         let facing = camera.forward().dot(offset.normalize_or_zero());
@@ -291,15 +339,25 @@ pub fn update(
                 camera.translation + offset,
                 session.progress().exit_unlocked(),
             );
-        match attention(facing, clear_ray) {
-            Attention::Inspecting => impression.noticed = true,
-            Attention::Away if impression.noticed && director.allows(Cue::Illusion, now) => {
+        let attention = attention(facing, clear_ray);
+        session
+            .memory_mut()
+            .look(id, stage, now, attention == Attention::Inspecting);
+        let can_shift = id != ImpressionId::Relay || session.memory().relay_due(now, view);
+        match attention {
+            Attention::Away
+                if can_shift
+                    && session.memory().knows_variant(id, stage)
+                    && director.allows(Cue::Illusion, now) =>
+            {
                 *pose = next.pose;
                 material.0 = next.material.clone();
                 impression.stage += 1;
-                impression.noticed = false;
                 impression.last_change = now;
                 state.altered += 1;
+                if id == ImpressionId::Relay {
+                    session.memory_mut().changed_relay(now);
+                }
                 director.claim(Cue::Illusion, now);
             }
             _ => (),

@@ -1,7 +1,7 @@
 @echo off
 cd /d "%~dp0"
-if exist "%~dp0windows\ainda-vivo-v0.0.9.exe" (
-    start "" "%~dp0windows\ainda-vivo-v0.0.9.exe"
+if exist "%~dp0windows\ainda-vivo-v0.0.10.exe" (
+    start "" "%~dp0windows\ainda-vivo-v0.0.10.exe"
     exit /b
 )
 where pwsh.exe >nul 2>nul

@@ -141,6 +141,12 @@ pub fn tools(
             director.intensity(),
             director.recent(),
         );
+        info!(
+            "DEV OS 17: {:?}; setores recentes {:?}; aparição recente {}",
+            observer.memory.service,
+            observer.memory.recent_route(),
+            observer.memory.recent_sighting(session.elapsed),
+        );
     }
 }
 

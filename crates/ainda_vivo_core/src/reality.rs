@@ -1,6 +1,7 @@
 //! Authoritative expedition rules and one observer's continuity.
 use crate::{
     Vec3,
+    memory::FieldMemory,
     story::{Action, Phase, Progress},
 };
 
@@ -53,7 +54,9 @@ pub struct Observer {
     participation: Participation,
     checkpoint: Option<SafePoint>,
     recovered: bool,
+    retry_spent: bool,
     outcome: Option<Outcome>,
+    pub memory: FieldMemory,
 }
 
 impl Observer {
@@ -95,7 +98,9 @@ impl Expedition {
                 participation: Participation::Real,
                 checkpoint: None,
                 recovered: false,
+                retry_spent: false,
                 outcome: None,
+                memory: FieldMemory::default(),
             },
         }
     }
@@ -106,6 +111,32 @@ impl Expedition {
 
     pub fn observer(&self) -> &Observer {
         &self.observer
+    }
+
+    pub fn memory_mut(&mut self) -> &mut FieldMemory {
+        &mut self.observer.memory
+    }
+
+    pub fn can_resume(&self) -> bool {
+        self.observer.outcome == Some(Outcome::Interrupted)
+            && self.observer.checkpoint.is_some()
+            && !self.observer.recovered
+            && !self.observer.retry_spent
+    }
+
+    /// A new observer at the last real post. The discarded attempt remains
+    /// terminated, and the replacement cannot claim another short replay.
+    pub fn resume_interrupted(&mut self) -> Option<(Self, SafePoint)> {
+        if !self.can_resume() {
+            return None;
+        }
+        let post = self.observer.checkpoint?;
+        self.observer.retry_spent = true;
+        let mut next = Self::new(self.observer.id);
+        next.truth = self.truth.resumed();
+        next.observer.checkpoint = Some(post);
+        next.observer.retry_spent = true;
+        Some((next, post))
     }
 
     /// All interactive presentation, including the local gate, reads this view.
@@ -173,6 +204,7 @@ impl Expedition {
                 self.observer.participation = Participation::Real;
                 self.observer.recovered = true;
                 self.observer.outcome = None;
+                self.observer.memory.reset_variants();
                 Awakening::Recovered(checkpoint)
             }
             Reality::Real if self.observer.outcome.is_none() => {
@@ -309,6 +341,24 @@ mod tests {
         assert_eq!(expedition.view().phase(), Phase::Return);
         assert_eq!(expedition.awaken(), Awakening::Unavailable);
         assert!(powered().can_capture());
+    }
+
+    #[test]
+    fn a_live_interruption_has_one_short_replay_from_a_real_checkpoint() {
+        let mut original = powered();
+        original.act(Action::InspectPump, SAFE);
+        original.act(Action::ReviewRecording, SAFE);
+        assert_eq!(original.awaken(), Awakening::Interrupted);
+        let (mut resumed, post) = original.resume_interrupted().unwrap();
+        assert_eq!(post, SAFE);
+        assert_eq!(original.observer().reality(), Reality::Eliminated);
+        assert!(original.resume_interrupted().is_none());
+        assert!(resumed.view().exit_unlocked());
+        assert!(!resumed.view().recording_reviewed());
+        assert!(resumed.can_capture());
+        assert_eq!(resumed.awaken(), Awakening::Interrupted);
+        assert!(resumed.resume_interrupted().is_none());
+        assert!(!Expedition::default().can_resume());
     }
 
     #[test]

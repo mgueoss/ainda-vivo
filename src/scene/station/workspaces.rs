@@ -195,6 +195,72 @@ impl Station<'_, '_, '_, '_> {
                     action: Action::ReadArchive,
                     bounds: Aabb::from_center_size(folder, Vec3::new(0.39, 0.088, 0.33)),
                 });
+                let order = self.block(
+                    "Segunda via azul da ordem de serviço",
+                    super::SERVICE_ORDER,
+                    Vec3::new(0.31, 0.03, 0.24),
+                    blue.clone(),
+                    false,
+                );
+                self.b.commands.entity(order).insert(Interactable {
+                    action: Action::ReadServiceOrder,
+                    bounds: Aabb::from_center_size(
+                        super::SERVICE_ORDER,
+                        Vec3::new(0.34, 0.11, 0.29),
+                    ),
+                });
+                let switch = self.block(
+                    "Interruptor da luminária de inspeção",
+                    super::DESK_SWITCH,
+                    Vec3::new(0.15, 0.08, 0.16),
+                    coal.clone(),
+                    false,
+                );
+                self.block(
+                    "Tecla de baquelite do interruptor",
+                    super::DESK_SWITCH + Vec3::new(0.0, 0.034, 0.022),
+                    Vec3::new(0.08, 0.035, 0.071),
+                    oxide.clone(),
+                    false,
+                );
+                self.block(
+                    "Marca âmbar no interruptor",
+                    super::DESK_SWITCH + Vec3::new(0.0, 0.056, 0.010),
+                    Vec3::new(0.045, 0.010, 0.016),
+                    amber,
+                    false,
+                );
+                self.b.commands.entity(switch).insert(Interactable {
+                    action: Action::ToggleDeskLight,
+                    bounds: Aabb::from_center_size(super::DESK_SWITCH, Vec3::new(0.18, 0.16, 0.19)),
+                });
+                self.block(
+                    "Base da luminária",
+                    Vec3::new(28.57, 0.97, -8.43),
+                    Vec3::new(0.23, 0.07, 0.205),
+                    coal,
+                    false,
+                );
+                self.round(
+                    "Haste da luminária",
+                    Vec3::new(28.57, 1.00, -8.43),
+                    Vec3::new(28.57, 1.73, -8.43),
+                    0.044,
+                    steel,
+                );
+                self.light(
+                    Vec3::new(28.35, 1.72, -8.32),
+                    AMBER,
+                    3600.0,
+                    3.25,
+                    Some(crate::atmosphere::Circuit::Desk),
+                );
+                self.sign(
+                    "OS 17",
+                    Vec3::new(28.03, 1.55, -8.62),
+                    Vec2::new(0.51, 0.16),
+                    0.0,
+                );
                 self.sign(
                     "ARQUIVO 01",
                     Vec3::new(13.0, 2.31, -11.71),

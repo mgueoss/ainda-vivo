@@ -11,6 +11,9 @@ pub enum Action {
     ReadBadge,
     ReviewRecording,
     CheckGate,
+    ReadServiceOrder,
+    CheckRelay,
+    ToggleDeskLight,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -30,6 +33,13 @@ pub struct Progress {
 }
 
 impl Progress {
+    pub(crate) fn resumed(&self) -> Self {
+        Self {
+            phase: self.phase,
+            ..Self::default()
+        }
+    }
+
     pub fn phase(&self) -> Phase {
         self.phase
     }
@@ -67,6 +77,9 @@ impl Progress {
             Action::ReviewRecording => "consultar gravação da nave",
             Action::CheckGate if self.exit_unlocked() => return None,
             Action::CheckGate => "conferir trava da comporta",
+            Action::ReadServiceOrder => "ler segunda via da OS 17",
+            Action::CheckRelay => "conferir via do técnico",
+            Action::ToggleDeskLight => "acionar luminária da mesa",
         })
     }
 
@@ -112,6 +125,11 @@ impl Progress {
             (Action::ReadBadge, _) => {
                 "G. Borges, turno 07. No verso: «Falta só a leitura de retorno». A tinta ainda marca o plástico."
             }
+            (Action::ReadServiceOrder, _) => {
+                "OS 17, segunda via. Borges deveria conferir o relé auxiliar junto ao quadro da Elétrica às 03:19. Serviço cancelado às 02:52."
+            }
+            (Action::CheckRelay, _) => "Relé auxiliar. A via do técnico continua em branco.",
+            (Action::ToggleDeskLight, _) => "",
             (Action::ReviewRecording, Phase::Fuse | Phase::Baseline | Phase::Electrical) => {
                 "O gravador ainda depende do quadro geral."
             }
@@ -167,6 +185,9 @@ mod tests {
         p.apply(Action::ReadShiftLog);
         p.apply(Action::ReadReturnMemo);
         p.apply(Action::ReadBadge);
+        p.apply(Action::ReadServiceOrder);
+        p.apply(Action::CheckRelay);
+        p.apply(Action::ToggleDeskLight);
         p.apply(Action::ReviewRecording);
         assert!(!p.recording_reviewed());
         p.apply(Action::TakeFuse);

@@ -76,6 +76,8 @@ pub struct Atmosphere {
     pub(crate) quiet: f32,
     pub(crate) relief: f32,
     pub(crate) receipt: f32,
+    pub(crate) desk: f32,
+    pub(crate) refuge: f32,
     pub(crate) episode: episode::Episode,
 }
 
@@ -84,6 +86,7 @@ pub enum Circuit {
     Workshop,
     Inspection,
     Exit,
+    Desk,
 }
 
 #[derive(Component)]
@@ -129,6 +132,10 @@ pub fn update(
             session.progress().phase(),
         );
         let blend = 1.0 - (-3.2 * time.delta_secs()).exp();
+        let lit = session.memory().desk_light;
+        atmosphere.desk += (f32::from(lit) - atmosphere.desk) * blend;
+        let near_desk = crate::scene::station::lamp_refuge(lit, player.body.feet);
+        atmosphere.refuge += (f32::from(near_desk) - atmosphere.refuge) * blend;
         let quiet = atmosphere.echo.silence(session.elapsed);
         atmosphere.quiet += (quiet - atmosphere.quiet) * blend;
         let open = if session.progress().exit_unlocked() {
@@ -149,6 +156,7 @@ pub fn update(
             Circuit::Workshop => 1.0 - 0.64 * atmosphere.quiet,
             Circuit::Inspection => 1.0 - 0.36 * atmosphere.episode.pump_hush,
             Circuit::Exit => (0.06 + 0.94 * atmosphere.relief) * (1.0 + 0.12 * atmosphere.receipt),
+            Circuit::Desk => 0.04 + 0.96 * atmosphere.desk,
         };
         let intensity = fixture.lumens * multiplier;
         if (light.intensity - intensity).abs() > 5.0 {

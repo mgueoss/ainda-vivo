@@ -1,5 +1,5 @@
 use crate::{app::*, diagnostics::Performance};
-use ainda_vivo_core::reality::Outcome;
+use ainda_vivo_core::{memory::ServiceTrail, reality::Outcome};
 use bevy::{app::AppExit, prelude::*};
 
 const INK: Color = Color::srgb(0.84, 0.87, 0.81);
@@ -274,9 +274,8 @@ pub fn buttons(
             MenuAction::Main if session.screen == Screen::Paused => {
                 session.screen = Screen::Playing
             }
-            MenuAction::Main | MenuAction::Restart => {
-                restart(&mut session, &mut player, &mut comfort)
-            }
+            MenuAction::Main => continue_or_restart(&mut session, &mut player, &mut comfort),
+            MenuAction::Restart => restart(&mut session, &mut player, &mut comfort),
             MenuAction::OpenWake => request_awakening(&mut session),
             MenuAction::CancelWake | MenuAction::ConfirmWake => (),
             MenuAction::Bodycam => comfort.bodycam = !comfort.bodycam,
@@ -348,10 +347,16 @@ pub fn refresh(
                 _ => "AINDA VIVO".into(),
             },
             TextRole::Subtitle => match session.screen {
+                Screen::Complete if session.expedition.can_resume() => {
+                    "Registro interrompido. O posto conserva a última leitura.".into()
+                }
                 Screen::Complete
                     if session.expedition.observer().outcome() == Some(Outcome::Interrupted) =>
                 {
                     "Registro interrompido. Nenhuma baixa foi assinada.".into()
+                }
+                Screen::Complete if session.memory().service == ServiceTrail::Reconciled => {
+                    "Vistoria arquivada. A via 17 segue assinada após o cancelamento.".into()
                 }
                 Screen::Complete => {
                     "Vistoria arquivada. A câmera da nave continua gravando.".into()
@@ -360,10 +365,12 @@ pub fn refresh(
                 _ => "Estação 07 · Vistoria noturna".into(),
             },
             TextRole::Button(action) => match action {
-                MenuAction::Main => if session.screen == Screen::Paused {
-                    "CONTINUAR   [ENTER / ESC]"
-                } else {
-                    "INICIAR EXPEDIÇÃO   [ENTER]"
+                MenuAction::Main => match session.screen {
+                    Screen::Paused => "CONTINUAR   [ENTER / ESC]",
+                    Screen::Complete if session.expedition.can_resume() => {
+                        "RETOMAR DO POSTO   [ENTER]"
+                    }
+                    _ => "INICIAR EXPEDIÇÃO   [ENTER]",
                 }
                 .into(),
                 MenuAction::Bodycam => format!(
@@ -386,7 +393,7 @@ pub fn refresh(
                 _ => continue,
             },
             TextRole::Settings => format!(
-                "Campo de visão vertical: {:.0}°    |    Sensibilidade: {:.1}    |    Balanço máximo: 5 mm",
+                "Campo vertical {:.0}°   |   Mouse {:.1}   |   Balanço até 5 mm",
                 comfort.fov_degrees,
                 comfort.sensitivity * 1000.0
             ),

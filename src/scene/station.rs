@@ -19,8 +19,12 @@ use plan::{PORTALS, ROOMS, Room, Sector, Side, WATER_MAX, WATER_MIN, get};
 
 const WALL: f32 = 0.24;
 const FLOOR_DEPTH: f32 = 0.38;
+pub(crate) const TRIAGE_ID: u8 = Sector::Dispatch as u8;
 pub const SHIFT_LOG: Vec3 = Vec3::new(28.72, 0.949, -83.57);
 pub const ARCHIVE_LOG: Vec3 = Vec3::new(26.77, 0.942, -8.06);
+pub const SERVICE_ORDER: Vec3 = Vec3::new(28.07, 0.949, -8.02);
+pub const DESK_SWITCH: Vec3 = Vec3::new(28.72, 0.98, -8.02);
+pub const SERVICE_RELAY: Vec3 = Vec3::new(34.65, 1.55, -55.56);
 pub const RETURN_MEMO: Vec3 = Vec3::new(34.67, 1.48, -56.84);
 pub const BADGE: Vec3 = Vec3::new(3.43, 1.29, -57.67);
 pub const RETURN_POST: ainda_vivo_core::reality::SafePoint = ainda_vivo_core::reality::SafePoint {
@@ -34,6 +38,10 @@ pub(crate) fn sector_id(feet: Vec3) -> Option<u8> {
         .iter()
         .find(|room| room.contains(feet.xz()))
         .map(|room| room.sector as u8)
+}
+
+pub(crate) fn lamp_refuge(desk_light: bool, feet: Vec3) -> bool {
+    desk_light && feet.xz().distance_squared(SERVICE_ORDER.xz()) < 3.65 * 3.65
 }
 
 pub fn reached_exit(feet: Vec3) -> bool {
@@ -540,23 +548,34 @@ impl Station<'_, '_, '_, '_> {
         circuit: Option<Circuit>,
     ) {
         let lumens = lumens * 0.74;
+        let (housing, diffuser, start) = match circuit {
+            Some(Circuit::Desk) => (
+                Vec3::new(0.65, 0.10, 0.29),
+                Vec3::new(0.56, 0.033, 0.20),
+                0.04,
+            ),
+            _ => (
+                Vec3::new(1.42, 0.13, 0.37),
+                Vec3::new(1.21, 0.046, 0.225),
+                if matches!(circuit, Some(Circuit::Exit)) {
+                    0.06
+                } else {
+                    1.0
+                },
+            ),
+        };
         self.block(
             "Carcaça industrial",
             position + Vec3::Y * 0.035,
-            Vec3::new(1.42, 0.13, 0.37),
+            housing,
             self.palette.coal.clone(),
             false,
         );
-        let start = if matches!(circuit, Some(Circuit::Exit)) {
-            0.06
-        } else {
-            1.0
-        };
         let source = self.materials.add(emissive(tint, 1.65 * start));
         self.block(
             "Difusor industrial",
             position - Vec3::Y * 0.047,
-            Vec3::new(1.21, 0.046, 0.225),
+            diffuser,
             source.clone(),
             false,
         );
