@@ -1,20 +1,22 @@
-# AINDA VIVO — v0.0.8 · Além da Escuridão
+# AINDA VIVO — v0.0.9 · Falsa Realidade
 
-A vistoria da **Bomba 02** leva o jogador à nave antes e depois de rearmar o quadro geral. A Presença pode ficar imóvel, espiar estruturas ou atravessar a passarela. Um diretor de terror alterna momentos de observação, sons distantes e intervalos de silêncio. [Changelog](CHANGELOG.md) · [Documentação de continuidade](docs/CONTINUIDADE-v0.0.8.md)
+A vistoria da **Bomba 02** leva o jogador à nave antes e depois de rearmar o quadro geral. O posto da Elétrica guarda instruções para o retorno. Preste atenção ao que mudou entre uma passagem e outra. [Changelog](CHANGELOG.md) · [Documentação de continuidade com spoilers](AINDA-VIVO-HANDOFF-v0.0.9.md)
 
 O corredor leva à **Estação de Bombeamento 07**, com 15 setores, rotas laterais e cerca de 6.100 m² de planta. A tecla **F4** alterna o VHS entre suave, forte e desligado. O menu da pausa também oferece controle do VHS e do volume. [Detalhes do mapa](docs/ESTACAO-07.md)
 
-Protótipo real para Windows, feito em Rust + Bevy. Direção: usuário. Programação: IA, com decisões registradas aqui. PC primeiro; Android e LAN depois.
+Protótipo Windows feito em Rust e Bevy. O usuário dirige o projeto. A prioridade de desenvolvimento é a experiência solo no PC.
 
 ## Jogar
 
-Para jogar uma versão publicada, baixe o pacote Windows em [GitHub Releases](https://github.com/mgueoss/ainda-vivo/releases), extraia e abra **AINDA-VIVO.exe**. A [v0.0.8](https://github.com/mgueoss/ainda-vivo/releases/tag/v0.0.8) é a versão recomendada para testes. [Distribuição portátil e dependências](docs/DISTRIBUICAO.md)
+Para jogar uma versão publicada, baixe o pacote Windows, extraia e abra **AINDA-VIVO.exe**. A v0.0.9 é a versão recomendada para testes. [GitHub Release v0.0.9](https://github.com/mgueoss/ainda-vivo/releases/tag/v0.0.9) · [Distribuição portátil e dependências](docs/DISTRIBUICAO.md)
 
-Abra **JOGAR.cmd** para iniciar `windows/ainda-vivo-v0.0.8.exe` offline. Para acompanhar e salvar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
+No checkout com o binário local, **JOGAR.cmd** inicia `windows/ainda-vivo-v0.0.9.exe`. Para compilar pelo fonte e acompanhar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
 
 Sem executável pronto, o mesmo atalho compila e executa. A primeira compilação baixa as bibliotecas oficiais do motor; não baixa modelos, texturas, áudio ou pacotes de jogo. Compilações seguintes reaproveitam o cache.
 
 No menu, clique em **INICIAR EXPEDIÇÃO** ou pressione **Enter**. Pegue o fusível na oficina à esquerda. Use **E** no manômetro da **Bomba 02**, siga as indicações de **ELÉTRICA** e rearme o quadro geral. Volte à mesma bomba para registrar a segunda leitura e liberar a comporta. A saída fica depois da bacia de decantação. O Arquivo e a sala de Controle guardam registros opcionais.
+
+**Despertar** fica no menu de pausa e pede confirmação antes de interferir no registro atual.
 
 | Controle | Ação |
 |---|---|

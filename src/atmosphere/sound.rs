@@ -2,8 +2,12 @@ use super::{
     Atmosphere, DUCT, PUMP_KNOCK, WORKSHOP_ECHO, WORKSHOP_HUM,
     director::{Cue, Director},
 };
-use crate::app::{CollisionWorld, Comfort, LocalPlayer, MainCamera, Screen, Session};
 use crate::scene::presence::Presence;
+use crate::{
+    app::{CollisionWorld, Comfort, LocalPlayer, MainCamera, Screen, Session},
+    reality::{Developer, Threat},
+};
+use ainda_vivo_core::story::Phase;
 use bevy::{audio::AudioSinkPlayback, prelude::*};
 use std::{f32::consts::TAU, sync::Arc};
 
@@ -21,6 +25,8 @@ pub struct SoundBank {
     incidents: [[Arc<[f32]>; 3]; Kind::ALL.len()],
     pump_knocks: Arc<[f32]>,
     rail_scrape: Arc<[f32]>,
+    contact: Arc<[f32]>,
+    trailing: [Arc<[f32]>; 3],
 }
 
 #[derive(Clone, Copy, PartialEq, Eq)]
@@ -40,13 +46,16 @@ enum Sound {
     Shoes(f32),
     Incident(Kind),
     Episode(EpisodeCue),
+    Contact,
+    Trailing,
+    Reception,
 }
 
 #[derive(Component)]
 pub struct Emitter {
     sound: Sound,
     target: MixTarget,
-    expiry: Option<(u64, f32)>,
+    expiry: Option<(u64, u32, f32)>,
 }
 
 impl Emitter {
@@ -65,6 +74,15 @@ impl Emitter {
         match self.sound {
             Sound::Episode(cue) => Some(cue),
             _ => None,
+        }
+    }
+
+    pub fn reality_sound(&self) -> u8 {
+        match self.sound {
+            Sound::Contact => 1,
+            Sound::Reception => 2,
+            Sound::Trailing => 4,
+            _ => 0,
         }
     }
 }
@@ -144,12 +162,28 @@ pub fn setup(mut commands: Commands, mut audio: ResMut<Assets<Voice>>) {
         scrape * friction * (0.72 + 0.27 * tone(t, 8.1)) + drips
     })
     .into();
+    let contact = samples(1.65, 807, |t, noise| {
+        shoe(t - 0.05, noise, 81.0) * 0.50
+            + hollow_knock(t - 0.12, noise, 109.0) * 0.49
+            + shoe(t - 0.78, noise, 67.0) * 0.36
+            + hollow_knock(t - 0.86, noise, 98.0) * 0.38
+    })
+    .into();
+    let trailing = std::array::from_fn(|index| {
+        samples(0.49, 1177 + index as u32 * 61, |t, noise| {
+            shoe(t - 0.02, noise, 73.0 + index as f32 * 9.0) * 0.57
+                + hollow_knock(t - 0.12, noise, 138.0 - index as f32 * 7.0) * 0.16
+        })
+        .into()
+    });
     commands.insert_resource(SoundBank {
         echo,
         shoes,
         incidents: Kind::ALL.map(|kind| std::array::from_fn(|index| kind.clip(index))),
         pump_knocks,
         rail_scrape,
+        contact,
+        trailing,
     });
     for (kind, clip, position) in [
         (Sound::Room, room, None),
@@ -188,20 +222,23 @@ pub struct Gait {
     distance: f32,
     index: usize,
     attempt: u64,
+    revision: u32,
+    reception_played: bool,
 }
 
 pub fn emit(
     mut commands: Commands,
     mut audio: ResMut<Assets<Voice>>,
     session: Res<Session>,
-    scene: Res<Atmosphere>,
+    (scene, threat): (Res<Atmosphere>, Res<Threat>),
     player: Res<LocalPlayer>,
     bank: Res<SoundBank>,
     mut gait: Local<Gait>,
 ) {
-    if gait.attempt != session.attempt {
+    if (gait.attempt, gait.revision) != (session.attempt, session.perception_revision) {
         *gait = Gait {
             attempt: session.attempt,
+            revision: session.perception_revision,
             ..default()
         };
     }
@@ -209,6 +246,29 @@ pub fn emit(
     let previous = gait.previous.replace(feet).unwrap_or(feet);
     if session.screen != Screen::Playing {
         return;
+    }
+    if let Some(position) = threat.warning {
+        one_shot(
+            &mut commands,
+            &mut audio,
+            &session,
+            bank.contact.clone(),
+            Sound::Contact,
+            position + Vec3::Y * 0.27,
+            2.0,
+        );
+    }
+    if !gait.reception_played && crate::reality::exit_line(&session) {
+        gait.reception_played = true;
+        one_shot(
+            &mut commands,
+            &mut audio,
+            &session,
+            bank.echo.clone(),
+            Sound::Reception,
+            Vec3::new(-1.45, 0.21, -91.6),
+            2.0,
+        );
     }
     if scene.play_echo {
         one_shot(
@@ -302,9 +362,52 @@ fn one_shot(
         Emitter {
             sound,
             target,
-            expiry: Some((session.attempt, session.elapsed + lifetime)),
+            expiry: Some((
+                session.attempt,
+                session.perception_revision,
+                session.elapsed + lifetime,
+            )),
         },
     ));
+}
+
+#[derive(Default)]
+pub struct Trail {
+    until: f32,
+    next_step: f32,
+    index: usize,
+    attempt: u64,
+    revision: u32,
+}
+
+impl Trail {
+    fn active(&self, now: f32) -> bool {
+        now < self.until
+    }
+
+    fn footfall(&mut self, now: f32, feet: Vec3, velocity: Vec3) -> Option<(usize, Vec3)> {
+        let velocity = velocity.with_y(0.0);
+        let speed = velocity.length();
+        if !self.active(now) || now < self.next_step || speed < 1.65 {
+            return None;
+        }
+        let heading = velocity / speed;
+        let side = Vec3::Y.cross(heading);
+        let sign = if self.index.is_multiple_of(2) {
+            1.0
+        } else {
+            -1.0
+        };
+        let position = feet - heading * (3.4 + speed * 0.42) + side * sign * 0.48 + Vec3::Y * 0.15;
+        self.next_step = now
+            + if self.index.is_multiple_of(2) {
+                0.62
+            } else {
+                0.91
+            };
+        self.index += 1;
+        Some((self.index % 3, position))
+    }
 }
 
 #[allow(clippy::too_many_arguments, reason = "Bevy system parameters.")]
@@ -314,23 +417,88 @@ pub fn emit_incidents(
     time: Res<Time>,
     session: Res<Session>,
     atmosphere: Res<Atmosphere>,
-    presence: Res<Presence>,
+    (presence, threat): (Res<Presence>, Res<Threat>),
     listener: Query<&Transform, With<MainCamera>>,
     bank: Res<SoundBank>,
     mut schedule: Local<IncidentSchedule>,
     mut director: ResMut<Director>,
+    developer: Res<Developer>,
+    player: Res<LocalPlayer>,
+    mut trail: Local<Trail>,
 ) {
-    schedule.reset(session.attempt, time.elapsed().as_millis() as u32);
+    let seed = developer
+        .seed
+        .map_or(time.elapsed().as_millis() as u32, |seed| {
+            seed ^ session.attempt as u32 ^ 1
+        });
+    schedule.reset(session.attempt, seed);
+    if (trail.attempt, trail.revision) != (session.attempt, session.perception_revision) {
+        *trail = Trail {
+            attempt: session.attempt,
+            revision: session.perception_revision,
+            ..default()
+        };
+    }
     if session.screen != Screen::Playing {
         return;
     }
-    if atmosphere.quiet > 0.14 || atmosphere.episode.holding_silence() || presence.active() {
+    if atmosphere.quiet > 0.14
+        || atmosphere.episode.holding_silence()
+        || presence.active()
+        || threat.active()
+        || session.false_exit.is_some()
+    {
+        trail.until = 0.0;
         schedule.defer_until(session.elapsed + 2.0);
         return;
     }
-    if director.allows(Cue::Sound, session.elapsed)
-        && let Ok(camera) = listener.single()
-        && let Some((kind, position)) = schedule.next(session.elapsed, camera)
+    let now = session.elapsed;
+    let speed = player.body.velocity.xz().length();
+    let Ok(camera) = listener.single() else {
+        return;
+    };
+    if director.allows(Cue::Sound, now)
+        && session.progress().phase() >= Phase::Electrical
+        && (1.85..3.0).contains(&speed)
+        && player.body.grounded
+        && director
+            .order
+            .is_multiple_of(if session.expedition.observer().distortion_ready(now) {
+                2
+            } else {
+                4
+            })
+        && player
+            .body
+            .velocity
+            .normalize_or_zero()
+            .dot(*camera.forward())
+            > 0.72
+    {
+        trail.until = now + 3.1;
+        trail.next_step = now + 0.24;
+        trail.index = director.order % 3;
+        director.claim(Cue::Sound, now);
+        schedule.defer_until(now + 11.0);
+    }
+    if trail.active(now) {
+        if let Some((variant, position)) =
+            trail.footfall(now, player.body.feet, player.body.velocity)
+        {
+            one_shot(
+                &mut commands,
+                &mut audio,
+                &session,
+                bank.trailing[variant].clone(),
+                Sound::Trailing,
+                position,
+                0.85,
+            );
+        }
+        return;
+    }
+    if director.allows(Cue::Sound, now)
+        && let Some((kind, position)) = schedule.next(now, camera)
     {
         one_shot(
             &mut commands,
@@ -341,7 +509,7 @@ pub fn emit_incidents(
             position,
             kind.duration() + 0.45,
         );
-        director.claim(Cue::Sound, session.elapsed);
+        director.claim(Cue::Sound, now);
     }
 }
 
@@ -377,8 +545,9 @@ pub fn mix(
         comfort.ambience_volume
     };
     for (entity, transform, emitter, mut settings, sink) in &mut sources {
-        if let Some((attempt, ends_at)) = emitter.expiry
+        if let Some((attempt, revision, ends_at)) = emitter.expiry
             && (attempt != session.attempt
+                || revision != session.perception_revision
                 || (sink.is_none() && session.elapsed >= ends_at)
                 || session.screen == Screen::Complete)
         {
@@ -404,6 +573,7 @@ pub fn mix(
                 Sound::Room => {
                     0.48 * (1.0 - 0.76 * scene.quiet)
                         * (1.0 - 0.26 * scene.relief)
+                        * (1.0 - 0.23 * scene.receipt)
                         * (1.0 - 0.65 * director.hush)
                         * (1.0 - 0.70 * scene.episode.pump_hush.max(scene.episode.rail_hush))
                 }
@@ -422,6 +592,9 @@ pub fn mix(
                 Sound::Incident(kind) => kind.gain() * (1.0 - 0.18 * scene.relief),
                 Sound::Episode(EpisodeCue::Pump) => 0.94,
                 Sound::Episode(EpisodeCue::Rail) => 0.82,
+                Sound::Contact => 0.66,
+                Sound::Trailing => 0.47,
+                Sound::Reception => 0.47,
             };
         if matches!(emitter.sound, Sound::Room) {
             let centre = gain * std::f32::consts::FRAC_1_SQRT_2;
@@ -439,7 +612,7 @@ pub fn mix(
             && world.occludes(
                 listener.translation,
                 source,
-                session.progress.exit_unlocked(),
+                session.progress().exit_unlocked(),
             );
         let (left, right) = channels(
             offset,
@@ -449,6 +622,33 @@ pub fn mix(
         emitter
             .target
             .set(left, right, if blocked { 0.74 } else { 0.0 });
+    }
+}
+
+#[cfg(test)]
+mod trail_tests {
+    use super::*;
+
+    #[test]
+    fn a_following_footfall_stays_behind_motion_and_stops_when_stationary() {
+        let mut trail = Trail {
+            until: 12.0,
+            next_step: 9.0,
+            ..default()
+        };
+        assert!(
+            trail
+                .footfall(8.99, Vec3::ZERO, Vec3::NEG_Z * 2.5)
+                .is_none()
+        );
+        let (_, source) = trail.footfall(9.0, Vec3::ZERO, Vec3::NEG_Z * 2.5).unwrap();
+        assert!(source.z > 3.0);
+        assert!(trail.footfall(10.0, Vec3::ZERO, Vec3::ZERO).is_none());
+        assert!(
+            trail
+                .footfall(12.01, Vec3::ZERO, Vec3::NEG_Z * 2.5)
+                .is_none()
+        );
     }
 }
 

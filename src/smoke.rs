@@ -1,4 +1,5 @@
 //! Bounded integration check for the full inspection, including the return and the exit.
+pub mod continuity;
 use crate::{
     app::*,
     atmosphere::{
@@ -32,6 +33,7 @@ const CONTROL_FRAMES: u32 = 3400;
 #[derive(Resource, Default)]
 pub struct SmokeTest {
     pub enabled: bool,
+    pub reality: bool,
     pub check_audio: bool,
     frame: u32,
     paused_position: Vec3,
@@ -64,8 +66,10 @@ pub struct SmokeTest {
 impl SmokeTest {
     pub fn from_args() -> Self {
         let args: Vec<_> = std::env::args().collect();
+        let reality = args.iter().any(|a| a == "--smoke-reality");
         Self {
-            enabled: args.iter().any(|a| a == "--smoke-test"),
+            enabled: reality || args.iter().any(|a| a == "--smoke-test"),
+            reality,
             check_audio: args.iter().any(|a| a == "--check-audio"),
             report: args
                 .windows(2)
@@ -197,7 +201,7 @@ pub fn drive(
     mut commands: Commands,
     exit: MessageWriter<AppExit>,
 ) {
-    if !smoke.enabled {
+    if !smoke.enabled || smoke.reality {
         return;
     }
     smoke.frame += 1;
@@ -256,7 +260,7 @@ pub fn drive(
         8531 => {
             keys.release(KeyCode::KeyE);
             smoke.archive_read =
-                session.message.contains("03:12") && session.progress.phase() == Phase::Exit;
+                session.message.contains("03:12") && session.progress().phase() == Phase::Exit;
         }
         8550 => smoke.capture(&mut commands, "arquivo-ocorrencia"),
         _ => (),
@@ -378,7 +382,7 @@ pub fn drive(
         210 | 1180 | 2045 | 2064 | 2145 | 3040 | 4520 | 4563 => keys.press(KeyCode::KeyE),
         211 => {
             keys.release(KeyCode::KeyE);
-            if session.progress.phase() != Phase::Baseline {
+            if session.progress().phase() != Phase::Baseline {
                 smoke.failures.push("fuse_interaction");
             }
         }
@@ -431,7 +435,7 @@ pub fn drive(
         }
         1181 => {
             keys.release(KeyCode::KeyE);
-            if session.progress.phase() != Phase::Electrical {
+            if session.progress().phase() != Phase::Electrical {
                 smoke.failures.push("baseline_interaction");
             }
             smoke.waypoint = 0;
@@ -446,7 +450,7 @@ pub fn drive(
         }
         2046 => {
             keys.release(KeyCode::KeyE);
-            if session.progress.phase() != Phase::Electrical {
+            if session.progress().phase() != Phase::Electrical {
                 smoke.failures.push("panel_ray_through_wall");
             }
             place(&mut player, PANEL_VIEW, 0.0, 0.0);
@@ -454,7 +458,7 @@ pub fn drive(
         }
         2065 => {
             keys.release(KeyCode::KeyE);
-            if session.progress.phase() != Phase::Return {
+            if session.progress().phase() != Phase::Return {
                 smoke.failures.push("rearm_interaction");
             }
         }
@@ -462,7 +466,7 @@ pub fn drive(
             if !fixture_pose(&scene.fixtures, |f| matches!(f, FixtureMotion::Breaker))
                 .is_some_and(|now| now.angle_between(smoke.breaker).abs() > 0.55)
                 || atmosphere.relief > 0.0
-                || session.progress.exit_unlocked()
+                || session.progress().exit_unlocked()
             {
                 smoke.failures.push("rearm_should_leave_gate_locked");
             }
@@ -471,12 +475,12 @@ pub fn drive(
         }
         2146 => {
             keys.release(KeyCode::KeyE);
-            if session.progress.phase() != Phase::Return
+            if session.progress().phase() != Phase::Return
                 || !session.message.contains("retorno")
                 || !world.occludes(
                     player.body.feet + Vec3::Y * 1.62,
                     EXIT_GATE.with_z(-90.0),
-                    session.progress.exit_unlocked(),
+                    session.progress().exit_unlocked(),
                 )
             {
                 smoke.failures.push("gate_blocks_before_return");
@@ -501,7 +505,7 @@ pub fn drive(
         }
         3041 => {
             keys.release(KeyCode::KeyE);
-            if !session.progress.exit_unlocked() {
+            if !session.progress().exit_unlocked() {
                 smoke.failures.push("return_interaction");
             }
             smoke.waypoint = 0;
@@ -560,7 +564,7 @@ pub fn drive(
         }
         4521 => {
             keys.release(KeyCode::KeyE);
-            if !session.progress.recording_reviewed() || !scene.recording.displayed() {
+            if !session.progress().recording_reviewed() || !scene.recording.displayed() {
                 smoke.failures.push("recording_monitor_interaction");
             }
         }
@@ -576,7 +580,7 @@ pub fn drive(
         4564 => {
             keys.release(KeyCode::KeyE);
             smoke.log_read =
-                session.message.contains("02:48") && session.progress.phase() == Phase::Exit;
+                session.message.contains("02:48") && session.progress().phase() == Phase::Exit;
             if !smoke.log_read {
                 smoke.failures.push("control_shift_log");
             }
@@ -608,14 +612,14 @@ pub fn drive(
                 || tally.cues[1] == 0
                 || tally.empty == 0
                 || tally.revisits == 0
-                || tally.moods != 0b1111
+                || tally.moods & 0b1111 != 0b1111
             {
                 smoke.failures.push("director_main_route_and_crossing");
             }
             restart(&mut session, &mut player, &mut comfort);
         }
         5350 => {
-            if session.progress.phase() != Phase::Fuse
+            if session.progress().phase() != Phase::Fuse
                 || atmosphere.echo != Echo::Waiting
                 || atmosphere.relief > 0.0
                 || atmosphere.episode.pressure > 0.0

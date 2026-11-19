@@ -35,6 +35,17 @@ impl Station<'_, '_, '_, '_> {
     }
 
     fn pumps(&mut self) {
+        let badge = self.block(
+            "Identificação no gancho de retorno",
+            super::BADGE,
+            Vec3::new(0.17, 0.10, 0.03),
+            self.palette.paper.clone(),
+            false,
+        );
+        self.b.commands.entity(badge).insert(Interactable {
+            bounds: Aabb::from_center_size(super::BADGE, Vec3::new(0.28, 0.18, 0.10)),
+            action: Action::ReadBadge,
+        });
         for (lane, tint) in [(-1.0, SODIUM), (1.0, COLD)] {
             for (index, z) in [-33.0, -43.55, -55.2].into_iter().enumerate() {
                 let inspected = lane > 0.0 && index == 1;
@@ -57,7 +68,12 @@ impl Station<'_, '_, '_, '_> {
                 } else {
                     z + 0.7
                 };
-                self.spill(Vec3::new(lane * 5.85, 2.65, spill_z), tint, intensity, 5.9);
+                if lane < 0.0 && index == 2 {
+                    // Reuse the spill to outline the silhouette against the concrete.
+                    self.spill(Vec3::new(-4.82, 2.12, -56.31), tint, 7800.0, 5.9);
+                } else {
+                    self.spill(Vec3::new(lane * 5.85, 2.65, spill_z), tint, intensity, 5.9);
+                }
                 for rail_z in [z - 1.55, z + 1.55] {
                     self.block(
                         "Linha de manutenção",
@@ -443,6 +459,23 @@ impl Station<'_, '_, '_, '_> {
         );
         self.main_electrical_panel();
         self.fan(Vec3::new(34.68, 2.65, -56.68), -FRAC_PI_2, 1.54);
+        let memo = self.block(
+            "Instrução de retorno grampeada",
+            super::RETURN_MEMO,
+            Vec3::new(0.026, 0.31, 0.40),
+            self.palette.paper.clone(),
+            false,
+        );
+        self.b.commands.entity(memo).insert(Interactable {
+            bounds: Aabb::from_center_size(super::RETURN_MEMO, Vec3::new(0.14, 0.38, 0.47)),
+            action: Action::ReadReturnMemo,
+        });
+        self.sign(
+            "POSTO DE RETORNO",
+            super::RETURN_MEMO + Vec3::Y * 0.33,
+            Vec2::new(1.35, 0.24),
+            -FRAC_PI_2,
+        );
         self.floor_directions("NAVE ↑", Vec2::new(29.63, -56.37), PI);
         self.floor_directions("BOMBAS ↑", Vec2::new(18.80, -52.48), FRAC_PI_2);
         self.sign(

@@ -70,5 +70,14 @@
     "zipSha256": "575738194ea5b69e5d2c9654b55493ab7d7df85dfbc94b163b211c671c409cb3",
     "changelog": "Diretor de terror, novas poses e retirada do vulto fora de quadro, duas ilusões, variantes sonoras, VHS revisto e registros contraditórios. **Versão recomendada para testes.**",
     "known": "O impacto do terror, o conforto e o desempenho em sessões livres ainda precisam de avaliação manual."
+  },
+  {
+    "version": "0.0.9",
+    "title": "Falsa Realidade",
+    "commit": null,
+    "exeSha256": "979fdf9914446e9f21fb842dd94d930fee92c18cd7a3ae6bf358dbea3762c8bb",
+    "zipSha256": null,
+    "changelog": "A vistoria da Bomba 02 ganha Despertar, aparições mais atentas ao trajeto, passos atrás do operador e novas contradições na Estação 07. A atualização estreia a captura silenciosa e desfechos experimentais. O menu de pausa pede confirmação para Despertar.",
+    "known": "Experiência solo experimental. A frequência de encontros, o impacto do terror e o conforto em partidas livres ainda precisam de avaliação humana. A instalação real do Visual C++ em Windows limpo segue pendente de teste."
   }
 ]

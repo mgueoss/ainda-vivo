@@ -1,0 +1,19 @@
+AINDA VIVO v0.0.9
+smoke-reality: PASS
+frames: 2696
+seed: 20261118
+route escaped warning: true
+seed reproduced the same sighting time: true
+contact kept input, torch, clock, position and speed: true
+Control clock changed behind the observer: true
+perceived exit showed receipt then contradiction: true
+pausing suspended the receipt and audio: true
+recovery kept real progress and returned to the same post: true
+true exit after recovery: true
+awakening while alive ended the attempt: true
+restart cleared the private state: true
+optional return memo read via interaction ray: true
+requested audio playback check: true
+contact/reception playback mask: 11
+captures: 10
+failures: []

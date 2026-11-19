@@ -10,6 +10,7 @@ Set-StrictMode -Version Latest
 $repo = 'mgueoss/ainda-vivo'
 $api = "https://api.github.com/repos/$repo"
 $catalog = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'versions.json') -Raw | ConvertFrom-Json
+$recommended = ($catalog | Sort-Object { [version]$_.version } -Descending | Select-Object -First 1).version
 if ($Version) {
     $catalog = @($catalog | Where-Object { $_.version -in $Version })
     if ($catalog.Count -ne $Version.Count) { throw 'Uma das versões selecionadas não está no catálogo.' }
@@ -33,6 +34,10 @@ $requests = foreach ($item in $catalog) {
     }
     $reference = git -C $root rev-parse "refs/tags/$tag"
     if ($LASTEXITCODE -ne 0) { throw "Tag local não encontrada: $tag." }
+    $manifest = git -C $root show ("${tag}:Cargo.toml")
+    if ($LASTEXITCODE -ne 0 -or ($manifest -join [char]10) -notmatch ('(?m)^version = "' + [regex]::Escape($item.version) + '"$')) {
+        throw "O manifesto da tag $tag informa outra versão."
+    }
     [pscustomobject]@{ Item=$item; Tag=$tag; Hash=$digest; Filename=$filename; Zip=$zip; Checksum=$checksum; Ref=$reference }
 }
 $refs = @($requests | ForEach-Object { 'refs/tags/' + $_.Tag })
@@ -134,7 +139,7 @@ try {
         $outcome = 'existente'
         if (!$release) {
             $title = "AINDA VIVO $tag — $($item.title)"
-            if ($item.version -eq '0.0.8') { $title += ' · recomendada para testes' }
+            if ($item.version -eq $recommended) { $title += ' · recomendada para testes' }
             $body = @"
 ## O que mudou
 

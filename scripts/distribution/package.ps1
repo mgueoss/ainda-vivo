@@ -128,7 +128,7 @@ try {
         Add-PortablePackage $Version (Resolve-Path -LiteralPath $GameExe).ProviderPath ''
         return
     }
-    foreach ($record in $catalog) {
+    foreach ($record in ($catalog | Where-Object zipSha256)) {
         $v = $record.version
         $original = Join-Path $OriginalDirectory "ainda-vivo-v$v-windows-e-codigo.zip"
         if (!(Test-Path -LiteralPath $original -PathType Leaf)) { throw "Original v$v ausente em $original." }

@@ -1,4 +1,5 @@
 use crate::{app::*, diagnostics::Performance};
+use ainda_vivo_core::reality::Outcome;
 use bevy::{app::AppExit, prelude::*};
 
 const INK: Color = Color::srgb(0.84, 0.87, 0.81);
@@ -9,6 +10,9 @@ const BUTTON: Color = Color::srgb(0.10, 0.15, 0.14);
 pub enum MenuAction {
     Main,
     Restart,
+    OpenWake,
+    CancelWake,
+    ConfirmWake,
     Bodycam,
     Vsync,
     FovDown,
@@ -38,6 +42,7 @@ pub enum TextRole {
 #[derive(Component)]
 pub enum Root {
     Menu,
+    Wake,
     Hud,
 }
 
@@ -102,7 +107,10 @@ pub fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
             (style.text("Estação 07 · Vistoria noturna", 17.0, MUTED), TextRole::Subtitle),
             style.text("WASD  mover    MOUSE  olhar    SHIFT  correr    CTRL/C  agachar\nE  interagir    F  lanterna    ESPAÇO  pular    ESC  pausar    F3  diagnóstico", 14.0, MUTED),
             style.button(MenuAction::Main, "INICIAR EXPEDIÇÃO   [ENTER]", false),
-            style.button(MenuAction::Restart, "REINICIAR EXPEDIÇÃO", true),
+            (Node { column_gap: px(8), ..default() }, children![
+                style.button(MenuAction::Restart, "REINICIAR EXPEDIÇÃO", true),
+                style.button(MenuAction::OpenWake, "DESPERTAR", true),
+            ]),
             (Node { column_gap: px(8), ..default() }, children![
                 style.button(MenuAction::Bodycam, "BALANÇO: DESLIGADO", true),
                 style.button(MenuAction::Vsync, "VSYNC: LIGADO", true),
@@ -123,6 +131,49 @@ pub fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
             style.button(MenuAction::Quit, "SAIR", true),
         ]
     )]));
+    commands.spawn((
+        Root::Wake,
+        Node {
+            width: percent(100),
+            height: percent(100),
+            position_type: PositionType::Absolute,
+            display: Display::None,
+            justify_content: JustifyContent::Center,
+            align_items: AlignItems::Center,
+            ..default()
+        },
+        GlobalZIndex(11),
+        BackgroundColor(Color::srgba(0.014, 0.027, 0.027, 0.97)),
+        children![(
+            Node {
+                width: percent(90),
+                max_width: px(520),
+                padding: UiRect::all(px(24)),
+                flex_direction: FlexDirection::Column,
+                row_gap: px(16),
+                ..default()
+            },
+            BackgroundColor(Color::srgb(0.025, 0.038, 0.037)),
+            children![
+                style.text("DESPERTAR", 33.0, INK),
+                style.text(
+                    "Interromper o registro e tentar voltar ao posto? A vistoria pode ser encerrada.",
+                    17.0,
+                    MUTED
+                ),
+                (
+                    Node {
+                        column_gap: px(10),
+                        ..default()
+                    },
+                    children![
+                        style.button(MenuAction::CancelWake, "VOLTAR  [ESC]", false),
+                        style.button(MenuAction::ConfirmWake, "CONFIRMAR", false),
+                    ]
+                ),
+            ]
+        )],
+    ));
     commands.spawn((
         Root::Hud,
         Node {
@@ -211,6 +262,14 @@ pub fn buttons(
         if *interaction != Interaction::Pressed || session.screen == Screen::Playing {
             continue;
         }
+        if session.wake_confirmation {
+            match action {
+                MenuAction::CancelWake => session.wake_confirmation = false,
+                MenuAction::ConfirmWake => awaken(&mut session, &mut player),
+                _ => (),
+            }
+            continue;
+        }
         match action {
             MenuAction::Main if session.screen == Screen::Paused => {
                 session.screen = Screen::Playing
@@ -218,6 +277,8 @@ pub fn buttons(
             MenuAction::Main | MenuAction::Restart => {
                 restart(&mut session, &mut player, &mut comfort)
             }
+            MenuAction::OpenWake => request_awakening(&mut session),
+            MenuAction::CancelWake | MenuAction::ConfirmWake => (),
             MenuAction::Bodycam => comfort.bodycam = !comfort.bodycam,
             MenuAction::Vsync => comfort.vsync = !comfort.vsync,
             MenuAction::FovDown => comfort.fov_degrees = (comfort.fov_degrees - 5.0).max(55.0),
@@ -242,21 +303,41 @@ pub fn buttons(
     }
 }
 
+pub fn request_awakening(session: &mut Session) {
+    if session.screen == Screen::Paused {
+        session.wake_confirmation = true;
+    }
+}
+
 pub fn refresh(
     session: Res<Session>,
     comfort: Res<Comfort>,
     performance: Res<Performance>,
-    mut roots: Query<(&Root, &mut Node)>,
+    mut roots: Query<(&Root, &mut Node), Without<MenuAction>>,
+    mut actions: Query<(&MenuAction, &mut Node)>,
     mut labels: Query<(&TextRole, &mut Text)>,
 ) {
     for (root, mut node) in &mut roots {
         let shown = match root {
-            Root::Menu => session.screen != Screen::Playing,
+            Root::Menu => session.screen != Screen::Playing && !session.wake_confirmation,
+            Root::Wake => session.screen == Screen::Paused && session.wake_confirmation,
             Root::Hud => session.screen == Screen::Playing,
         };
         let display = if shown { Display::Flex } else { Display::None };
         if node.display != display {
             node.display = display;
+        }
+    }
+    for (action, mut node) in &mut actions {
+        if matches!(action, MenuAction::OpenWake) {
+            let display = if session.screen == Screen::Paused {
+                Display::Flex
+            } else {
+                Display::None
+            };
+            if node.display != display {
+                node.display = display;
+            }
         }
     }
     for (role, mut label) in &mut labels {
@@ -267,6 +348,11 @@ pub fn refresh(
                 _ => "AINDA VIVO".into(),
             },
             TextRole::Subtitle => match session.screen {
+                Screen::Complete
+                    if session.expedition.observer().outcome() == Some(Outcome::Interrupted) =>
+                {
+                    "Registro interrompido. Nenhuma baixa foi assinada.".into()
+                }
                 Screen::Complete => {
                     "Vistoria arquivada. A câmera da nave continua gravando.".into()
                 }
@@ -300,7 +386,7 @@ pub fn refresh(
                 _ => continue,
             },
             TextRole::Settings => format!(
-                "Campo de visão vertical: {:.0}°    |    Sensibilidade: {:.1}    |    Balanço máximo: 6 mm",
+                "Campo de visão vertical: {:.0}°    |    Sensibilidade: {:.1}    |    Balanço máximo: 5 mm",
                 comfort.fov_degrees,
                 comfort.sensitivity * 1000.0
             ),
@@ -309,7 +395,7 @@ pub fn refresh(
                 session.elapsed as u32 / 60,
                 session.elapsed as u32 % 60
             ),
-            TextRole::Objective => session.progress.objective().into(),
+            TextRole::Objective => session.objective().into(),
             TextRole::Prompt => session.prompt.clone(),
             TextRole::Message => {
                 if session.message_left > 0.0 {

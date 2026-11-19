@@ -7,6 +7,8 @@ pub enum Action {
     ReadNote,
     ReadArchive,
     ReadShiftLog,
+    ReadReturnMemo,
+    ReadBadge,
     ReviewRecording,
     CheckGate,
 }
@@ -60,6 +62,8 @@ impl Progress {
             Action::ReadNote => "ler ordem de vistoria",
             Action::ReadArchive => "ler ocorrência da Bomba 02",
             Action::ReadShiftLog => "ler livro de ponto",
+            Action::ReadReturnMemo => "ler instrução do posto",
+            Action::ReadBadge => "virar identificação",
             Action::ReviewRecording => "consultar gravação da nave",
             Action::CheckGate if self.exit_unlocked() => return None,
             Action::CheckGate => "conferir trava da comporta",
@@ -101,6 +105,12 @@ impl Progress {
             }
             (Action::ReadShiftLog, _) => {
                 "Controle, 02:48. Borges deu baixa sozinho. Às 03:12, o gravador marcou dois operadores na nave. A folha original tem uma única assinatura."
+            }
+            (Action::ReadReturnMemo, _) => {
+                "Posto da Elétrica. Se voltarem passos do mesmo vão, ilumine o acesso ou recue. Nos registros duplicados, preserve a última leitura que você anotou."
+            }
+            (Action::ReadBadge, _) => {
+                "G. Borges, turno 07. No verso: «Falta só a leitura de retorno». A tinta ainda marca o plástico."
             }
             (Action::ReviewRecording, Phase::Fuse | Phase::Baseline | Phase::Electrical) => {
                 "O gravador ainda depende do quadro geral."
@@ -155,6 +165,8 @@ mod tests {
         let mut p = Progress::default();
         p.apply(Action::ReadArchive);
         p.apply(Action::ReadShiftLog);
+        p.apply(Action::ReadReturnMemo);
+        p.apply(Action::ReadBadge);
         p.apply(Action::ReviewRecording);
         assert!(!p.recording_reviewed());
         p.apply(Action::TakeFuse);

@@ -61,6 +61,13 @@ pub struct Episode {
 }
 
 impl Episode {
+    pub fn reset_rail(&mut self) {
+        self.rail = Beat::default();
+        self.rail_hush = 0.0;
+        self.trace = None;
+        self.play_rail = false;
+    }
+
     pub fn update(&mut self, elapsed: f32, feet: Vec3, phase: Phase) {
         self.play_pump = false;
         self.play_rail = false;

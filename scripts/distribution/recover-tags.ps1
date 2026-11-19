@@ -61,7 +61,7 @@ function Restore-Source($Zip, [string]$Prefix, [string]$Folder) {
     }
 }
 
-foreach ($item in $catalog) {
+foreach ($item in ($catalog | Where-Object zipSha256)) {
     $tag = 'v' + $item.version
     $prefix = "ainda-vivo-$tag/"
     $original = Join-Path $OriginalDirectory "ainda-vivo-$tag-windows-e-codigo.zip"

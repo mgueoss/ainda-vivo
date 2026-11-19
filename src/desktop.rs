@@ -46,11 +46,15 @@ pub fn read_input(
         comfort.vhs = comfort.vhs.next();
     }
     if keys.just_pressed(KeyCode::Escape) {
-        session.screen = match session.screen {
-            Screen::Playing => Screen::Paused,
-            Screen::Paused => Screen::Playing,
-            other => other,
-        };
+        if session.wake_confirmation {
+            session.wake_confirmation = false;
+        } else {
+            session.screen = match session.screen {
+                Screen::Playing => Screen::Paused,
+                Screen::Paused => Screen::Playing,
+                other => other,
+            };
+        }
         player.command = default();
         player.look_armed = false;
         return;
@@ -58,7 +62,8 @@ pub fn read_input(
     if keys.just_pressed(KeyCode::Enter) {
         match session.screen {
             Screen::Menu | Screen::Complete => restart(&mut session, &mut player, &mut comfort),
-            Screen::Paused => session.screen = Screen::Playing,
+            Screen::Paused if !session.wake_confirmation => session.screen = Screen::Playing,
+            Screen::Paused => (),
             Screen::Playing => (),
         }
         return;
@@ -114,7 +119,7 @@ pub fn simulate(
         return;
     }
     let bounds = &solids.as_ref().expect("collision lists initialized")
-        [usize::from(session.progress.exit_unlocked())];
+        [usize::from(session.progress().exit_unlocked())];
     let command = player.command;
     player.command.jump = false;
     player.body.step(command, time.delta_secs(), bounds);
@@ -125,10 +130,10 @@ pub fn simulate(
     }
     session.elapsed += time.delta_secs();
     session.message_left = (session.message_left - time.delta_secs()).max(0.0);
-    if session.progress.exit_unlocked() && crate::scene::station::reached_exit(player.body.feet) {
-        session.screen = Screen::Complete;
-        info!("Expedição concluída em {:.1}s", session.elapsed);
+    if crate::scene::station::reached_exit(player.body.feet) {
+        session.cross_exit();
     }
+    session.age_exit_receipt();
 }
 
 pub fn update_camera(

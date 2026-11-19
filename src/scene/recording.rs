@@ -148,7 +148,8 @@ pub fn update(
         recording.ready = false;
     }
     let playing = session.screen == Screen::Playing;
-    if playing && session.progress.phase() == Phase::Electrical && recording.started_at.is_none() {
+    if playing && session.progress().phase() == Phase::Electrical && recording.started_at.is_none()
+    {
         recording.started_at = Some(session.elapsed);
     }
     if let Some(start) = recording.started_at {
@@ -160,7 +161,7 @@ pub fn update(
             camera.is_active = capturing;
         }
     }
-    let reviewing = recording.ready && session.progress.recording_reviewed();
+    let reviewing = recording.ready && session.progress().recording_reviewed();
     if reviewing != recording.displayed
         && let Some(glass) = materials.get_mut(&recording.glass)
     {

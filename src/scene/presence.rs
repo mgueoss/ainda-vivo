@@ -3,6 +3,7 @@ use super::surfaces;
 use crate::{
     app::{CollisionWorld, MainCamera, Screen, Session},
     atmosphere::director::{Cue, Director},
+    reality::Trace,
 };
 use ainda_vivo_core::story::{Phase, Progress};
 use bevy::{light::NotShadowCaster, prelude::*};
@@ -18,6 +19,11 @@ pub const FIRST_MARK: Vec3 = Vec3::new(2.55, 0.016, -21.36);
 pub const FIRST_WITNESS: Vec3 = Vec3::new(0.0, 1.62, -8.8);
 pub const WALKWAY_MARK: Vec3 = Vec3::new(7.16, 0.016, -80.25);
 pub const WALKWAY_WITNESS: Vec3 = Vec3::new(7.92, 1.62, -69.05);
+pub const WEST_MARK: Vec3 = Vec3::new(-3.62, 0.016, -54.10);
+pub const WEST_WITNESS: Vec3 = Vec3::new(1.6, 1.62, -44.10);
+
+const ELECTRICAL_RETURN: usize = 3;
+const WEST_BAY: usize = 4;
 
 struct Site {
     name: &'static str,
@@ -34,6 +40,7 @@ enum Motion {
     Watch,
     Lean(f32),
     Cross(f32),
+    Advance,
 }
 
 impl Motion {
@@ -43,12 +50,19 @@ impl Motion {
             Self::Watch => 4.65,
             Self::Lean(_) => 3.48,
             Self::Cross(_) => 2.55,
+            Self::Advance => 8.6,
         }
     }
 
     fn pose(self, age: f32, facing: Quat) -> (Vec3, Quat) {
         match self {
             Self::Still => (Vec3::ZERO, facing),
+            // The orientation stays fixed. The short step ends in the
+            // authored bay even if the observer takes another route.
+            Self::Advance => (
+                facing * Vec3::Z * (0.83 * smooth((age - 1.25) / 4.9)),
+                facing,
+            ),
             Self::Watch => (facing * Vec3::X * (0.28 * smooth(age / 1.03)), facing),
             Self::Lean(distance) => {
                 let lean = smooth(age / 1.15);
@@ -103,11 +117,11 @@ const SITES: [Site; 10] = [
     },
     Site {
         name: "Vão oeste da nave",
-        feet: Vec3::new(-3.62, 0.016, -54.10),
-        witness: Vec3::new(1.6, 1.62, -44.10),
+        feet: WEST_MARK,
+        witness: WEST_WITNESS,
         from: Phase::Return,
         through: Phase::Exit,
-        motion: Motion::Still,
+        motion: Motion::Advance,
     },
     Site {
         name: "Passarela leste",
@@ -198,6 +212,8 @@ struct Sighting {
 #[derive(Resource, Default)]
 pub struct Presence {
     attempt: u64,
+    revision: u32,
+    pub contact: Option<Trace>,
     seen: [bool; SITES.len()],
     appearances: [u8; SITES.len()],
     last_site: Option<(usize, f32)>,
@@ -212,6 +228,7 @@ struct Opportunity {
     open: bool,
     revisit: bool,
     offset: usize,
+    heading: Option<Vec3>,
 }
 
 #[cfg(test)]
@@ -219,6 +236,7 @@ const OPEN: Opportunity = Opportunity {
     open: true,
     revisit: false,
     offset: 0,
+    heading: None,
 };
 
 impl Presence {
@@ -278,7 +296,17 @@ impl Presence {
                 })
                 .min_by_key(|(_, site)| {
                     let favor_cross = phase == Phase::Exit && !opportunity.offset.is_multiple_of(4);
-                    favor_cross && !matches!(site.motion, Motion::Cross(_))
+                    let ahead = opportunity.heading.is_none_or(|direction| {
+                        direction.dot(
+                            (site.feet - camera.translation)
+                                .with_y(0.0)
+                                .normalize_or_zero(),
+                        ) > 0.72
+                    });
+                    (
+                        favor_cross && !matches!(site.motion, Motion::Cross(_)),
+                        !ahead,
+                    )
                 })
         {
             let bearing = (camera.translation - site.feet).with_y(0.0);
@@ -329,6 +357,12 @@ impl Presence {
         if sighting.framed_for < 0.46 && alpha >= 0.48 && in_view {
             sighting.framed_for += (elapsed - sighting.checked_at).min(0.075);
             self.seen[sighting.site] = sighting.framed_for >= 0.46;
+            if self.seen[sighting.site] && matches!(sighting.site, ELECTRICAL_RETURN | WEST_BAY) {
+                self.contact = Some(Trace {
+                    at: elapsed,
+                    position: site.feet,
+                });
+            }
         }
         sighting.checked_at = elapsed;
         let transform = Transform::from_translation(site.feet + offset + Vec3::Y * (HEIGHT * 0.5))
@@ -376,7 +410,7 @@ type SilhouetteView<'w, 's> = Query<
 >;
 
 pub fn update(
-    session: Res<Session>,
+    (session, player): (Res<Session>, Res<crate::app::LocalPlayer>),
     world: Res<CollisionWorld>,
     mut director: ResMut<Director>,
     cameras: Query<(&Transform, &Projection), With<MainCamera>>,
@@ -384,9 +418,10 @@ pub fn update(
     mut figure: SilhouetteView,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
-    if presence.attempt != session.attempt {
+    if (presence.attempt, presence.revision) != (session.attempt, session.perception_revision) {
         *presence = Presence {
             attempt: session.attempt,
+            revision: session.perception_revision,
             ..default()
         };
     }
@@ -401,7 +436,7 @@ pub fn update(
         && let Ok((camera, Projection::Perspective(lens))) = cameras.single()
         && let Some((pose, alpha)) = presence.advance(
             session.elapsed,
-            &session.progress,
+            session.progress(),
             camera,
             lens,
             &world,
@@ -409,6 +444,8 @@ pub fn update(
                 open: director.allows(Cue::Presence, session.elapsed),
                 revisit: director.revisit,
                 offset: director.order,
+                heading: (director.revisit && player.body.velocity.xz().length_squared() > 2.0)
+                    .then(|| player.body.velocity.with_y(0.0).normalize_or_zero()),
             },
         )
     {
@@ -509,6 +546,17 @@ fn smooth(value: f32) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn approach_stays_within_the_authored_bay() {
+        let motion = SITES[WEST_BAY].motion;
+        let orientation = Quat::from_rotation_y(0.96);
+        assert_eq!(motion.pose(1.25, orientation).0, Vec3::ZERO);
+        let (late, rotation) = motion.pose(8.0, orientation);
+        assert!((late.length() - 0.83).abs() < 0.001);
+        assert!((late.normalize() - (orientation * Vec3::Z)).length() < 0.001);
+        assert_eq!(rotation, orientation);
+    }
 
     #[test]
     fn appearance_requires_distance_framing_and_a_clear_ray() {

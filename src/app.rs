@@ -1,5 +1,8 @@
 use ainda_vivo_core::{
-    collision::Aabb, movement::PlayerBody, movement::PlayerCommand, story::Progress,
+    collision::Aabb,
+    movement::{PlayerBody, PlayerCommand},
+    reality::{Awakening, Expedition, Outcome},
+    story::{Action, Progress},
 };
 use bevy::{
     audio::AddAudioSource, diagnostic::FrameTimeDiagnosticsPlugin, prelude::*, window::PresentMode,
@@ -19,11 +22,20 @@ pub enum Screen {
 pub struct Session {
     pub screen: Screen,
     pub attempt: u64,
-    pub progress: Progress,
+    pub expedition: Expedition,
+    pub perception_revision: u32,
+    pub wake_confirmation: bool,
     pub elapsed: f32,
     pub message: &'static str,
     pub message_left: f32,
     pub prompt: String,
+    pub false_exit: Option<ExitPresentation>,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+pub enum ExitPresentation {
+    Receipt { reveal_at: f32 },
+    Contradiction,
 }
 
 impl Default for Session {
@@ -31,20 +43,103 @@ impl Default for Session {
         Self {
             screen: Screen::Menu,
             attempt: 0,
-            progress: Progress::default(),
+            expedition: Expedition::default(),
+            perception_revision: 0,
+            wake_confirmation: false,
             elapsed: 0.0,
             message: "",
             message_left: 0.0,
             prompt: String::new(),
+            false_exit: None,
         }
     }
 }
 
 impl Session {
+    pub fn progress(&self) -> &Progress {
+        self.expedition.view()
+    }
+
+    pub fn act(&mut self, action: Action) {
+        let message = self
+            .expedition
+            .act(action, crate::scene::station::RETURN_POST);
+        self.say(message);
+    }
+
+    pub fn objective(&self) -> &'static str {
+        match self.false_exit {
+            Some(ExitPresentation::Receipt { .. }) => {
+                "Vistoria concluída. Registro de saída recebido."
+            }
+            Some(ExitPresentation::Contradiction) => {
+                "Ordem 07 pendente. O corredor permanece aberto."
+            }
+            None => self.progress().objective(),
+        }
+    }
+
+    pub fn cross_exit(&mut self) {
+        match self.expedition.cross_exit() {
+            Some(Outcome::Escaped) => {
+                self.screen = Screen::Complete;
+                info!("Expedição concluída em {:.1}s", self.elapsed);
+            }
+            Some(Outcome::PerceivedExit) => {
+                self.false_exit = Some(ExitPresentation::Receipt {
+                    reveal_at: self.elapsed + 4.0,
+                });
+                self.say("Portaria: baixa recebida. Pode seguir.");
+            }
+            _ => (),
+        }
+    }
+
+    pub fn age_exit_receipt(&mut self) {
+        if matches!(self.false_exit, Some(ExitPresentation::Receipt { reveal_at }) if self.elapsed >= reveal_at)
+        {
+            self.false_exit = Some(ExitPresentation::Contradiction);
+            self.say("Portaria: Ordem 07. O seu turno ainda não começou.");
+        }
+    }
+
     pub fn say(&mut self, message: &'static str) {
         self.message = message;
         self.message_left = 8.0;
         info!("Registro: {message}");
+    }
+}
+
+pub fn awaken(session: &mut Session, player: &mut LocalPlayer) {
+    if session.screen != Screen::Paused || !session.wake_confirmation {
+        return;
+    }
+    session.wake_confirmation = false;
+    match session.expedition.awaken() {
+        Awakening::Recovered(post) => {
+            *player = LocalPlayer {
+                body: PlayerBody {
+                    feet: post.feet,
+                    previous_feet: post.feet,
+                    ..default()
+                },
+                yaw: post.yaw,
+                pitch: post.pitch,
+                eye_height: 1.62,
+                ..default()
+            };
+            session.screen = Screen::Playing;
+            session.perception_revision += 1;
+            session.false_exit = None;
+            session.prompt.clear();
+            session.say("Registro retomado no posto da Elétrica.");
+        }
+        Awakening::Interrupted => {
+            session.screen = Screen::Complete;
+            player.command = default();
+            player.look_armed = false;
+        }
+        Awakening::Unavailable => (),
     }
 }
 
@@ -164,6 +259,7 @@ pub fn run() -> bevy::app::AppExit {
             ..default()
         })
         .insert_resource(smoke)
+        .insert_resource(crate::reality::Developer::from_args())
         .init_resource::<Session>()
         .insert_resource(comfort)
         .insert_resource(preferences)
@@ -172,7 +268,9 @@ pub fn run() -> bevy::app::AppExit {
         .init_resource::<crate::atmosphere::director::Director>()
         .init_resource::<crate::scene::presence::Presence>()
         .init_resource::<crate::scene::illusion::Illusions>()
+        .init_resource::<crate::reality::Threat>()
         .init_resource::<crate::diagnostics::Performance>()
+        .init_resource::<crate::smoke::continuity::ContinuitySmoke>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: format!("AINDA VIVO | v{VERSION}"),
@@ -204,7 +302,7 @@ pub fn run() -> bevy::app::AppExit {
             (
                 crate::ui::buttons,
                 crate::desktop::read_input,
-                crate::smoke::drive,
+                (crate::smoke::drive, crate::smoke::continuity::drive).chain(),
                 crate::desktop::update_camera,
                 crate::vhs::update,
                 crate::interaction::interact,
@@ -216,6 +314,8 @@ pub fn run() -> bevy::app::AppExit {
                 (
                     crate::atmosphere::director::update,
                     crate::scene::presence::update,
+                    crate::reality::update,
+                    crate::reality::tools,
                     crate::scene::illusion::update,
                 )
                     .chain(),

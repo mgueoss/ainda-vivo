@@ -1,5 +1,7 @@
 # Validação — 18/11/2026
 
+A validação da versão mais recente está em [Validação v0.0.9](VALIDACAO-v0.0.9.md), com as duas rotas, áudio, capturas e integridade da distribuição.
+
 ## v0.0.8 — Além da Escuridão
 
 Rust/Cargo 1.97.1, Windows x64 MSVC, Bevy 0.18.1 e NVIDIA GeForce GTX 1660 SUPER com driver 610.88 via Vulkan. A validação reutilizou o cache na unidade D: e compilou em modo offline. O executável distribuído usa o perfil de desenvolvimento otimizado do projeto, com símbolos de depuração desativados.

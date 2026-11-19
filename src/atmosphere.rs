@@ -3,7 +3,7 @@ pub mod director;
 mod episode;
 pub mod sound;
 
-use crate::app::{LocalPlayer, Screen, Session};
+use crate::app::{ExitPresentation, LocalPlayer, Screen, Session};
 use bevy::prelude::*;
 pub(crate) use episode::PUMP_KNOCK;
 
@@ -70,10 +70,12 @@ fn smooth(value: f32) -> f32 {
 #[derive(Resource, Default)]
 pub struct Atmosphere {
     attempt: u64,
+    revision: u32,
     pub echo: Echo,
     pub(crate) play_echo: bool,
     pub(crate) quiet: f32,
     pub(crate) relief: f32,
+    pub(crate) receipt: f32,
     pub(crate) episode: episode::Episode,
 }
 
@@ -106,29 +108,47 @@ pub fn update(
             ..default()
         };
     }
+    if atmosphere.revision != session.perception_revision {
+        atmosphere.revision = session.perception_revision;
+        if !session.progress().exit_unlocked() {
+            atmosphere.episode.reset_rail();
+        }
+        atmosphere.receipt = 0.0;
+    }
     atmosphere.play_echo = false;
     if session.screen == Screen::Playing {
         atmosphere.play_echo = atmosphere.echo.advance(
             session.elapsed,
-            session.progress.has_fuse(),
-            session.progress.power_restored(),
+            session.progress().has_fuse(),
+            session.progress().power_restored(),
             player.body.feet,
         );
-        atmosphere
-            .episode
-            .update(session.elapsed, player.body.feet, session.progress.phase());
+        atmosphere.episode.update(
+            session.elapsed,
+            player.body.feet,
+            session.progress().phase(),
+        );
         let blend = 1.0 - (-3.2 * time.delta_secs()).exp();
         let quiet = atmosphere.echo.silence(session.elapsed);
         atmosphere.quiet += (quiet - atmosphere.quiet) * blend;
-        if session.progress.exit_unlocked() {
-            atmosphere.relief += (1.0 - atmosphere.relief) * blend;
-        }
+        let open = if session.progress().exit_unlocked() {
+            1.0
+        } else {
+            0.0
+        };
+        atmosphere.relief += (open - atmosphere.relief) * blend;
+        let receipt = if matches!(session.false_exit, Some(ExitPresentation::Receipt { .. })) {
+            1.0
+        } else {
+            0.0
+        };
+        atmosphere.receipt += (receipt - atmosphere.receipt) * blend;
     }
     for (fixture, mut light) in &mut lights {
         let multiplier = match fixture.circuit {
             Circuit::Workshop => 1.0 - 0.64 * atmosphere.quiet,
             Circuit::Inspection => 1.0 - 0.36 * atmosphere.episode.pump_hush,
-            Circuit::Exit => 0.06 + 0.94 * atmosphere.relief,
+            Circuit::Exit => (0.06 + 0.94 * atmosphere.relief) * (1.0 + 0.12 * atmosphere.receipt),
         };
         let intensity = fixture.lumens * multiplier;
         if (light.intensity - intensity).abs() > 5.0 {

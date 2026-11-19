@@ -48,7 +48,7 @@ pub fn animate(
                 Quat::from_rotation_z(side) * Quat::from_rotation_x(depth)
             }
             FixtureMotion::Breaker => {
-                let angle = if session.progress.power_restored() {
+                let angle = if session.progress().power_restored() {
                     -0.52
                 } else {
                     0.48

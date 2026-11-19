@@ -1,8 +1,9 @@
 //! Schedules opportunities for presentation systems. It never changes mission state.
 use crate::{
-    app::{LocalPlayer, Screen, Session},
+    app::{ExitPresentation, LocalPlayer, Screen, Session},
     atmosphere::Atmosphere,
-    scene::{presence::Presence, station},
+    reality::{Developer, Threat},
+    scene::{illusion::Illusions, presence::Presence, station},
     smoke::SmokeTest,
 };
 use ainda_vivo_core::story::Phase;
@@ -15,6 +16,8 @@ pub enum Mood {
     Suspicion,
     Tension,
     Relief,
+    Unease,
+    Anticipation,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -46,18 +49,30 @@ struct Context {
     forward: Vec3,
     speed: f32,
     protected: bool,
+    distortion: bool,
+    anomalies: u8,
+}
+
+#[derive(Clone, Copy, Debug)]
+pub struct Beat {
+    at: f32,
+    cue: Cue,
+    sector: Option<u8>,
 }
 
 #[derive(Resource, Default)]
 pub struct Director {
     pub attempt: u64,
     seed: u32,
+    initial_seed: u32,
+    revision: u32,
     pub mood: Mood,
     pub tally: Tally,
     pub hush: f32,
     pub revisit: bool,
     last_sector: Option<u8>,
     visited: u16,
+    recent_sectors: [Option<u8>; 4],
     next_sample: f32,
     next_window: f32,
     last_event: Option<(f32, Cue)>,
@@ -65,6 +80,11 @@ pub struct Director {
     last_forward: Vec3,
     phase: Phase,
     pub order: usize,
+    pressure: f32,
+    last_presence: Option<f32>,
+    history: [Option<Beat>; 6],
+    requested: Option<Cue>,
+    quiet_until: f32,
 }
 
 impl Director {
@@ -72,6 +92,7 @@ impl Director {
         Self {
             attempt,
             seed: seed ^ (attempt as u32).wrapping_mul(0x9e3779b9),
+            initial_seed: seed,
             next_window: 5.0,
             tally: Tally {
                 moods: 1,
@@ -79,6 +100,22 @@ impl Director {
             },
             ..default()
         }
+    }
+
+    pub fn initial_seed(&self) -> u32 {
+        self.initial_seed
+    }
+
+    pub fn intensity(&self) -> f32 {
+        self.pressure
+    }
+
+    pub fn recent(&self) -> &[Option<Beat>] {
+        &self.history
+    }
+
+    pub fn request(&mut self, cue: Cue) {
+        self.requested = Some(cue);
     }
 
     fn random(&mut self) -> f32 {
@@ -99,6 +136,7 @@ impl Director {
             return false;
         };
         now < window.until
+            && (cue != Cue::Presence || self.last_presence.is_none_or(|last| now - last >= 6.0))
             && window.first.is_some_and(|first| {
                 first == cue || (now > window.began + 1.4 && cue != Cue::Sound)
             })
@@ -117,13 +155,30 @@ impl Director {
         debug_assert!(self.allows(cue, now));
         self.tally.cues[cue as usize] += 1;
         self.last_event = Some((now, cue));
+        self.history.rotate_right(1);
+        self.history[0] = Some(Beat {
+            at: now,
+            cue,
+            sector: self.last_sector,
+        });
+        if cue == Cue::Presence {
+            self.last_presence = Some(now);
+        }
+        self.pressure = (self.pressure
+            + match cue {
+                Cue::Presence => 0.62,
+                Cue::Sound => 0.28,
+                Cue::Illusion => 0.40,
+            })
+        .min(1.0);
         self.window = None;
         self.next_window =
             now + match cue {
                 Cue::Presence => 7.0,
                 Cue::Sound => 6.0,
                 Cue::Illusion => 6.5,
-            } + self.random() * 3.0;
+            } + self.random() * 3.0
+                + (self.pressure - 0.72).max(0.0) * 5.0;
         self.set_mood(Mood::Tension);
         debug!("Diretor: {cue:?} em {now:.2}s");
     }
@@ -132,10 +187,13 @@ impl Director {
         let now = context.elapsed;
         let target = match self.mood {
             Mood::Calm | Mood::Relief => 0.0,
+            Mood::Unease => 0.08,
             Mood::Suspicion => 0.25,
+            Mood::Anticipation => 0.30,
             Mood::Tension => 0.38,
         };
         self.hush += (target - self.hush) * (1.0 - (-1.9 * dt).exp());
+        self.pressure *= (-dt / 5.7).exp();
 
         if context.protected && self.window.take().is_some() {
             self.next_window = self.next_window.max(now + 1.5);
@@ -155,6 +213,8 @@ impl Director {
             self.revisit = self.visited & bit != 0;
             self.visited |= bit;
             self.tally.revisits += u32::from(self.revisit);
+            self.recent_sectors.rotate_right(1);
+            self.recent_sectors[0] = Some(id);
             self.last_sector = context.sector;
         }
         if self.phase != context.phase {
@@ -164,6 +224,9 @@ impl Director {
         }
         if let Some(window) = &self.window {
             if now < window.until {
+                if now - window.began >= 1.05 {
+                    self.set_mood(Mood::Anticipation);
+                }
                 return;
             }
             self.tally.empty += 1;
@@ -175,12 +238,16 @@ impl Director {
                 Mood::Tension
             } else if now - previous < 5.4 {
                 Mood::Relief
+            } else if now + 1.6 >= self.next_window {
+                Mood::Unease
             } else {
                 Mood::Calm
             });
+        } else if now + 1.6 >= self.next_window {
+            self.set_mood(Mood::Unease);
         }
 
-        if now < self.next_window {
+        if now < self.quiet_until || now < self.next_window && self.requested.is_none() {
             return;
         }
         if context.protected || turning || context.sector.is_none() {
@@ -189,8 +256,13 @@ impl Director {
             return;
         }
         let roll = self.random();
-        let first = if roll < 0.12 && now > 14.0 {
+        let recently_here = self.recent_sectors[1..].contains(&context.sector);
+        let first = if let Some(requested) = self.requested.take() {
+            Some(requested)
+        } else if roll < 0.12 && now > 14.0 {
             None
+        } else if context.distortion && roll > 0.44 + f32::from(context.anomalies.min(4)) * 0.035 {
+            Some(Cue::Illusion)
         } else if (context.phase == Phase::Exit || context.speed > 2.65) && roll < 0.83 {
             Some(Cue::Presence)
         } else if context.speed < 2.55 && roll > if self.revisit { 0.54 } else { 0.68 } {
@@ -200,6 +272,26 @@ impl Director {
         } else {
             Some(Cue::Presence)
         };
+        let first = first.map(|cue| {
+            let repeated_here = recently_here
+                && self
+                    .history
+                    .iter()
+                    .flatten()
+                    .filter(|beat| {
+                        beat.sector == context.sector && beat.cue == cue && now - beat.at < 36.0
+                    })
+                    .count()
+                    >= 2;
+            if repeated_here {
+                match cue {
+                    Cue::Presence => Cue::Illusion,
+                    Cue::Sound | Cue::Illusion => Cue::Presence,
+                }
+            } else {
+                cue
+            }
+        });
         self.order = (self.random() * 1024.0) as usize;
         self.window = Some(Window {
             began: now,
@@ -219,19 +311,38 @@ pub fn update(
     session: Res<Session>,
     player: Res<LocalPlayer>,
     atmosphere: Res<Atmosphere>,
-    presence: Res<Presence>,
-    smoke: Res<SmokeTest>,
+    (presence, threat, illusions): (Res<Presence>, Res<Threat>, Res<Illusions>),
+    (smoke, developer): (Res<SmokeTest>, Res<Developer>),
     mut director: ResMut<Director>,
 ) {
     if session.attempt != director.attempt {
-        let seed = if smoke.enabled {
+        let seed = if let Some(seed) = developer.seed {
+            seed
+        } else if smoke.enabled {
             20261118
         } else {
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .map_or(20261118, |time| time.subsec_nanos())
         };
-        *director = Director::new(session.attempt, seed);
+        *director = if developer.seed.is_some() {
+            Director {
+                attempt: session.attempt,
+                ..Director::new(1, seed)
+            }
+        } else {
+            Director::new(session.attempt, seed)
+        };
+        if developer.enabled {
+            info!("DEV seed {seed} · tentativa {}", session.attempt);
+        }
+    }
+    if director.revision != session.perception_revision {
+        director.revision = session.perception_revision;
+        director.window = None;
+        director.requested = None;
+        director.quiet_until = session.elapsed + 7.0;
+        director.set_mood(Mood::Relief);
     }
     if session.screen != Screen::Playing {
         return;
@@ -240,12 +351,19 @@ pub fn update(
         Context {
             elapsed: session.elapsed,
             sector: station::sector_id(player.body.feet),
-            phase: session.progress.phase(),
+            phase: session.progress().phase(),
             forward: Quat::from_euler(EulerRot::YXZ, player.yaw, player.pitch, 0.0) * Vec3::NEG_Z,
             speed: player.body.velocity.xz().length(),
             protected: presence.active()
                 || atmosphere.quiet > 0.14
-                || atmosphere.episode.holding_silence(),
+                || atmosphere.episode.holding_silence()
+                || threat.active()
+                || matches!(session.false_exit, Some(ExitPresentation::Receipt { .. })),
+            distortion: session
+                .expedition
+                .observer()
+                .distortion_ready(session.elapsed),
+            anomalies: illusions.altered,
         },
         time.delta_secs(),
     );
@@ -263,6 +381,8 @@ mod tests {
             forward: Vec3::NEG_Z,
             speed: 1.3,
             protected: false,
+            distortion: false,
+            anomalies: 0,
         }
     }
 
@@ -313,5 +433,36 @@ mod tests {
         director.step(at(15.1, 1), 0.34);
         assert_eq!(director.tally.empty, 1);
         assert_eq!(director.mood, Mood::Relief);
+    }
+
+    #[test]
+    fn same_seed_and_route_produce_the_same_windows_with_new_moods() {
+        fn run() -> (Vec<(u32, Cue)>, u8) {
+            let mut director = Director::new(1, 932);
+            let mut cues = Vec::new();
+            for frame in 1..900 {
+                let now = frame as f32 / 10.0;
+                director.step(
+                    Context {
+                        distortion: frame > 400,
+                        ..at(now, 1 + (frame / 174 % 3) as u8)
+                    },
+                    0.1,
+                );
+                if frame % 16 == 0
+                    && let Some(cue) = [Cue::Presence, Cue::Sound, Cue::Illusion]
+                        .into_iter()
+                        .find(|cue| director.allows(*cue, now))
+                {
+                    director.claim(cue, now);
+                    cues.push((frame, cue));
+                }
+            }
+            (cues, director.tally.moods)
+        }
+        let (events, moods) = run();
+        assert!(!events.is_empty());
+        assert_eq!((events, moods), run());
+        assert_eq!(moods, 0b11_1111);
     }
 }

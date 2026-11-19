@@ -261,9 +261,9 @@ pub fn setup(
 pub fn sync_scene(session: Res<Session>, mut objects: Query<(&SceneRole, &mut Visibility)>) {
     for (role, mut visibility) in &mut objects {
         let visible = match role {
-            SceneRole::Fuse => !session.progress.has_fuse(),
-            SceneRole::Gate => !session.progress.exit_unlocked(),
-            SceneRole::PowerLamp => session.progress.power_restored(),
+            SceneRole::Fuse => !session.progress().has_fuse(),
+            SceneRole::Gate => !session.progress().exit_unlocked(),
+            SceneRole::PowerLamp => session.progress().power_restored(),
         };
         *visibility = if visible {
             Visibility::Visible

@@ -6,6 +6,7 @@ mod desktop;
 mod diagnostics;
 mod interaction;
 mod preferences;
+mod reality;
 mod scene;
 mod smoke;
 mod ui;

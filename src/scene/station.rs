@@ -21,6 +21,13 @@ const WALL: f32 = 0.24;
 const FLOOR_DEPTH: f32 = 0.38;
 pub const SHIFT_LOG: Vec3 = Vec3::new(28.72, 0.949, -83.57);
 pub const ARCHIVE_LOG: Vec3 = Vec3::new(26.77, 0.942, -8.06);
+pub const RETURN_MEMO: Vec3 = Vec3::new(34.67, 1.48, -56.84);
+pub const BADGE: Vec3 = Vec3::new(3.43, 1.29, -57.67);
+pub const RETURN_POST: ainda_vivo_core::reality::SafePoint = ainda_vivo_core::reality::SafePoint {
+    feet: Vec3::new(PANEL.x - 1.61, 0.002, PANEL.z),
+    yaw: FRAC_PI_2,
+    pitch: 0.0,
+};
 
 pub(crate) fn sector_id(feet: Vec3) -> Option<u8> {
     ROOMS

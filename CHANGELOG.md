@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.0.9 — Falsa Realidade
+
+- A Presença pode capturar silenciosamente após uma aproximação perigosa. A vistoria continua na perspectiva do operador.
+- Despertar, na pausa, é uma decisão confirmada. A história pode chegar a uma saída verdadeira, a uma baixa contraditória ou a um registro interrompido.
+- A nave e o Controle ganharam sinais de turno, um relógio sujeito a alterações e registros sobre o posto de retorno. Passos distantes reagem ao deslocamento.
+- O diretor usa memória curta de setores e eventos, intensidade recente e seis modos de ritmo. Seeds reproduzíveis e ferramentas de inspeção ficam disponíveis para desenvolvimento.
+- O protocolo de distribuição continua usando o inicializador universal e o ZIP portátil Windows x64.
+
 ## Distribuição Windows x64
 
 - Os oito pré-lançamentos históricos usam o mesmo inicializador nativo, com verificação de dependências e registro de diagnóstico.
