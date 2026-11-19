@@ -12,6 +12,7 @@ resolver = "3"
 
 [dependencies]
 ainda_vivo_core = { path = "crates/ainda_vivo_core" }
+zune-jpeg = { version = "=0.5.15", default-features = false, features = ["std"] }
 bevy = { version = "=0.18.1", default-features = false, features = [
     "std", "async_executor", "multi_threaded", "bevy_asset", "bevy_log",
     "bevy_window", "bevy_winit", "keyboard", "mouse", "bevy_color",

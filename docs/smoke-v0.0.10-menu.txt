@@ -1,0 +1,5 @@
+AINDA VIVO v0.0.10
+smoke-menu: PASS
+checks: focus and keyboard navigation, pointer actions, FOV and volume, controls screen, 1280x720 and 640x480, play, pause, neutral awakening confirmation, one post resume
+captures: 5
+failures: []

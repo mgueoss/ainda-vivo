@@ -2,6 +2,8 @@
 
 A validação da versão mais recente está em [Validação v0.0.10](VALIDACAO-v0.0.10.md), com as rotas de regressão e da OS 17, áudio, capturas e integridade da distribuição.
 
+A [revisão da abertura da v0.0.10](MENU-v0.0.10.md#validação) tem validação e pacote próprios na mesma release.
+
 ## v0.0.8 — Além da Escuridão
 
 Rust/Cargo 1.97.1, Windows x64 MSVC, Bevy 0.18.1 e NVIDIA GeForce GTX 1660 SUPER com driver 610.88 via Vulkan. A validação reutilizou o cache na unidade D: e compilou em modo offline. O executável distribuído usa o perfil de desenvolvimento otimizado do projeto, com símbolos de depuração desativados.

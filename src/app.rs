@@ -327,12 +327,18 @@ pub fn run() -> bevy::app::AppExit {
         .init_resource::<crate::diagnostics::Performance>()
         .init_resource::<crate::smoke::continuity::ContinuitySmoke>()
         .init_resource::<crate::smoke::echoes::EchoSmoke>()
+        .init_resource::<crate::ui::Menu>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: format!("AINDA VIVO | v{VERSION}"),
                 resolution: (1280, 720).into(),
                 present_mode: PresentMode::AutoVsync,
                 resizable: true,
+                resize_constraints: bevy::window::WindowResizeConstraints {
+                    min_width: 560.0,
+                    min_height: 430.0,
+                    ..default()
+                },
                 ..default()
             }),
             ..default()
@@ -356,7 +362,7 @@ pub fn run() -> bevy::app::AppExit {
         .add_systems(
             Update,
             (
-                crate::ui::buttons,
+                (crate::smoke::menu::drive, crate::ui::menu_input).chain(),
                 crate::desktop::read_input,
                 (
                     crate::smoke::drive,
@@ -384,7 +390,7 @@ pub fn run() -> bevy::app::AppExit {
                 crate::atmosphere::sound::emit_incidents,
                 crate::atmosphere::sound::mix,
                 crate::diagnostics::update,
-                crate::ui::refresh,
+                (crate::ui::refresh_menu, crate::ui::refresh_hud).chain(),
                 crate::desktop::sync_cursor,
                 crate::preferences::save,
             )

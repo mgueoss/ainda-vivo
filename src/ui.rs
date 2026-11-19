@@ -1,37 +1,17 @@
-use crate::{app::*, diagnostics::Performance};
-use ainda_vivo_core::{memory::ServiceTrail, reality::Outcome};
-use bevy::{app::AppExit, prelude::*};
+//! Presentation for the title, menus and the in-game view.
+mod menu;
+pub use menu::{
+    Action as MenuAction, Menu, Page as MenuPage, input as menu_input, refresh as refresh_menu,
+};
+
+use crate::{app::*, diagnostics::Performance, preferences::Preferences};
+use bevy::{prelude::*, text::FontWeight};
 
 const INK: Color = Color::srgb(0.84, 0.87, 0.81);
 const MUTED: Color = Color::srgb(0.50, 0.60, 0.56);
-const BUTTON: Color = Color::srgb(0.10, 0.15, 0.14);
-
-#[derive(Component, Clone, Copy)]
-pub enum MenuAction {
-    Main,
-    Restart,
-    OpenWake,
-    CancelWake,
-    ConfirmWake,
-    Bodycam,
-    Vsync,
-    FovDown,
-    FovUp,
-    SensDown,
-    SensUp,
-    SoundDown,
-    SoundUp,
-    SoundMute,
-    Vhs,
-    Quit,
-}
 
 #[derive(Component)]
-pub enum TextRole {
-    Heading,
-    Subtitle,
-    Button(MenuAction),
-    Settings,
+pub enum HudLabel {
     Recording,
     Objective,
     Prompt,
@@ -40,142 +20,75 @@ pub enum TextRole {
 }
 
 #[derive(Component)]
-pub enum Root {
-    Menu,
-    Wake,
-    Hud,
+pub struct Hud;
+
+struct UiStyle {
+    body: Handle<Font>,
+    display: Handle<Font>,
+    mono: Handle<Font>,
 }
 
-struct UiStyle(Handle<Font>);
-
 impl UiStyle {
-    fn text(&self, content: &str, size: f32, color: Color) -> impl Bundle + use<> {
+    fn installed(fonts: &mut Assets<Font>) -> Self {
+        // Use fonts already installed on the player's PC. The portable build carries only art.
+        let windows = std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into());
+        let directory = std::path::PathBuf::from(windows).join("Fonts");
+        let mut load = |names: &[&str]| {
+            names
+                .iter()
+                .find_map(|name| {
+                    Font::try_from_bytes(std::fs::read(directory.join(name)).ok()?).ok()
+                })
+                .map(|font| fonts.add(font))
+                .unwrap_or_default()
+        };
+        Self {
+            body: load(&["segoeui.ttf", "consola.ttf"]),
+            display: load(&["bahnschrift.ttf", "segoeuib.ttf", "consolab.ttf"]),
+            mono: load(&["consola.ttf", "segoeui.ttf"]),
+        }
+    }
+
+    fn body(&self, content: &str, size: f32, color: Color) -> impl Bundle + use<> {
+        (
+            Text::new(content),
+            TextFont::from_font_size(size).with_font(self.body.clone()),
+            TextColor(color),
+        )
+    }
+
+    fn display(&self, content: &str, size: f32, color: Color) -> impl Bundle + use<> {
         (
             Text::new(content),
             TextFont {
-                font: self.0.clone(),
+                font: self.display.clone(),
                 font_size: size,
+                weight: FontWeight::BOLD,
                 ..default()
             },
             TextColor(color),
         )
     }
 
-    fn button(&self, action: MenuAction, label: &str, small: bool) -> impl Bundle + use<> {
+    fn mono(&self, content: &str, size: f32, color: Color) -> impl Bundle + use<> {
         (
-            Button,
-            action,
-            Node {
-                min_height: px(if small { 32.0 } else { 38.0 }),
-                padding: UiRect::axes(px(16), px(6)),
-                justify_content: JustifyContent::Center,
-                align_items: AlignItems::Center,
-                flex_grow: 1.0,
-                ..default()
-            },
-            BackgroundColor(BUTTON),
-            children![(self.text(label, 15.0, INK), TextRole::Button(action))],
+            Text::new(content),
+            TextFont::from_font_size(size).with_font(self.mono.clone()),
+            TextColor(color),
         )
     }
 }
 
-pub fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
-    // Read an installed font at runtime. No proprietary font is bundled or copied.
-    let windows = std::env::var_os("WINDIR").unwrap_or_else(|| "C:\\Windows".into());
-    let directory = std::path::PathBuf::from(windows).join("Fonts");
-    let font = ["consola.ttf", "segoeui.ttf"].into_iter().find_map(|name| {
-        std::fs::read(directory.join(name))
-            .ok()
-            .and_then(|bytes| Font::try_from_bytes(bytes).ok())
-    });
-    let handle = if let Some(font) = font {
-        fonts.add(font)
-    } else {
-        warn!("Fonte local indisponível; usando a fonte limitada do motor.");
-        Handle::default()
-    };
-    let style = UiStyle(handle);
-    commands.spawn((Root::Menu, Node {
-        width: percent(100), height: percent(100), position_type: PositionType::Absolute,
-        justify_content: JustifyContent::Center, align_items: AlignItems::Center, ..default()
-    }, GlobalZIndex(10), BackgroundColor(Color::srgba(0.014, 0.027, 0.027, 0.97)), children![(
-        Node { width: percent(92), max_width: px(660), padding: UiRect::all(px(24)),
-            flex_direction: FlexDirection::Column, row_gap: px(8), ..default() },
-        children![
-            style.text(concat!("●  REGISTRO EXPERIMENTAL  /  v", env!("CARGO_PKG_VERSION")), 13.0, Color::srgb(0.70, 0.31, 0.25)),
-            (style.text("AINDA VIVO", 52.0, INK), TextRole::Heading),
-            (style.text("Estação 07 · Vistoria noturna", 17.0, MUTED), TextRole::Subtitle),
-            style.text("WASD  mover    MOUSE  olhar    SHIFT  correr    CTRL/C  agachar\nE  interagir    F  lanterna    ESPAÇO  pular    ESC  pausar    F3  diagnóstico", 14.0, MUTED),
-            style.button(MenuAction::Main, "INICIAR EXPEDIÇÃO   [ENTER]", false),
-            (Node { column_gap: px(8), ..default() }, children![
-                style.button(MenuAction::Restart, "REINICIAR EXPEDIÇÃO", true),
-                style.button(MenuAction::OpenWake, "DESPERTAR", true),
-            ]),
-            (Node { column_gap: px(8), ..default() }, children![
-                style.button(MenuAction::Bodycam, "BALANÇO: DESLIGADO", true),
-                style.button(MenuAction::Vsync, "VSYNC: LIGADO", true),
-                style.button(MenuAction::Vhs, "VHS: SUAVE  [F4]", true),
-            ]),
-            (style.text("", 14.0, MUTED), TextRole::Settings),
-            (Node { column_gap: px(8), ..default() }, children![
-                style.button(MenuAction::FovDown, "VISÃO −", true),
-                style.button(MenuAction::FovUp, "VISÃO +", true),
-                style.button(MenuAction::SensDown, "MOUSE −", true),
-                style.button(MenuAction::SensUp, "MOUSE +", true),
-            ]),
-            (Node { column_gap: px(8), ..default() }, children![
-                style.button(MenuAction::SoundDown, "SOM −", true),
-                style.button(MenuAction::SoundMute, "AMBIÊNCIA", true),
-                style.button(MenuAction::SoundUp, "SOM +", true),
-            ]),
-            style.button(MenuAction::Quit, "SAIR", true),
-        ]
-    )]));
+pub fn setup(
+    mut commands: Commands,
+    mut fonts: ResMut<Assets<Font>>,
+    mut images: ResMut<Assets<Image>>,
+    bindings: Res<Preferences>,
+) {
+    let style = UiStyle::installed(&mut fonts);
+    menu::spawn(&mut commands, &mut images, &style, &bindings);
     commands.spawn((
-        Root::Wake,
-        Node {
-            width: percent(100),
-            height: percent(100),
-            position_type: PositionType::Absolute,
-            display: Display::None,
-            justify_content: JustifyContent::Center,
-            align_items: AlignItems::Center,
-            ..default()
-        },
-        GlobalZIndex(11),
-        BackgroundColor(Color::srgba(0.014, 0.027, 0.027, 0.97)),
-        children![(
-            Node {
-                width: percent(90),
-                max_width: px(520),
-                padding: UiRect::all(px(24)),
-                flex_direction: FlexDirection::Column,
-                row_gap: px(16),
-                ..default()
-            },
-            BackgroundColor(Color::srgb(0.025, 0.038, 0.037)),
-            children![
-                style.text("DESPERTAR", 33.0, INK),
-                style.text(
-                    "Interromper o registro e tentar voltar ao posto? A vistoria pode ser encerrada.",
-                    17.0,
-                    MUTED
-                ),
-                (
-                    Node {
-                        column_gap: px(10),
-                        ..default()
-                    },
-                    children![
-                        style.button(MenuAction::CancelWake, "VOLTAR  [ESC]", false),
-                        style.button(MenuAction::ConfirmWake, "CONFIRMAR", false),
-                    ]
-                ),
-            ]
-        )],
-    ));
-    commands.spawn((
-        Root::Hud,
+        Hud,
         Node {
             width: percent(100),
             height: percent(100),
@@ -185,8 +98,8 @@ pub fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
         },
         children![
             (
-                style.text("", 16.0, INK),
-                TextRole::Recording,
+                style.mono("", 16.0, INK),
+                HudLabel::Recording,
                 Node {
                     position_type: PositionType::Absolute,
                     top: px(22),
@@ -195,8 +108,8 @@ pub fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
                 }
             ),
             (
-                style.text("", 14.0, MUTED),
-                TextRole::Performance,
+                style.mono("", 14.0, MUTED),
+                HudLabel::Performance,
                 Node {
                     position_type: PositionType::Absolute,
                     top: px(22),
@@ -205,7 +118,7 @@ pub fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
                 }
             ),
             (
-                style.text("·", 24.0, Color::srgba(0.9, 0.94, 0.9, 0.75)),
+                style.mono("·", 24.0, Color::srgba(0.9, 0.94, 0.9, 0.75)),
                 Node {
                     position_type: PositionType::Absolute,
                     left: percent(50),
@@ -224,9 +137,9 @@ pub fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
                     ..default()
                 },
                 children![
-                    (style.text("", 16.0, INK), TextRole::Objective),
-                    (style.text("", 16.0, MUTED), TextRole::Message),
-                    style.text("E  INTERAGIR     F  LANTERNA     ESC  PAUSA", 12.0, MUTED),
+                    (style.mono("", 16.0, INK), HudLabel::Objective),
+                    (style.mono("", 16.0, MUTED), HudLabel::Message),
+                    style.mono("E  INTERAGIR     F  LANTERNA     ESC  PAUSA", 12.0, MUTED),
                 ],
             ),
             (
@@ -238,68 +151,12 @@ pub fn setup(mut commands: Commands, mut fonts: ResMut<Assets<Font>>) {
                     ..default()
                 },
                 children![(
-                    style.text("", 17.0, Color::srgb(0.93, 0.77, 0.43)),
-                    TextRole::Prompt,
+                    style.mono("", 17.0, Color::srgb(0.93, 0.77, 0.43)),
+                    HudLabel::Prompt,
                 )],
             ),
         ],
     ));
-}
-
-pub fn buttons(
-    mut query: Query<(&Interaction, &MenuAction, &mut BackgroundColor), Changed<Interaction>>,
-    mut session: ResMut<Session>,
-    mut player: ResMut<LocalPlayer>,
-    mut comfort: ResMut<Comfort>,
-    mut exit: MessageWriter<AppExit>,
-) {
-    for (interaction, action, mut color) in &mut query {
-        *color = BackgroundColor(match interaction {
-            Interaction::Hovered => Color::srgb(0.18, 0.25, 0.22),
-            Interaction::Pressed => Color::srgb(0.28, 0.36, 0.29),
-            Interaction::None => BUTTON,
-        });
-        if *interaction != Interaction::Pressed || session.screen == Screen::Playing {
-            continue;
-        }
-        if session.wake_confirmation {
-            match action {
-                MenuAction::CancelWake => session.wake_confirmation = false,
-                MenuAction::ConfirmWake => awaken(&mut session, &mut player),
-                _ => (),
-            }
-            continue;
-        }
-        match action {
-            MenuAction::Main if session.screen == Screen::Paused => {
-                session.screen = Screen::Playing
-            }
-            MenuAction::Main => continue_or_restart(&mut session, &mut player, &mut comfort),
-            MenuAction::Restart => restart(&mut session, &mut player, &mut comfort),
-            MenuAction::OpenWake => request_awakening(&mut session),
-            MenuAction::CancelWake | MenuAction::ConfirmWake => (),
-            MenuAction::Bodycam => comfort.bodycam = !comfort.bodycam,
-            MenuAction::Vsync => comfort.vsync = !comfort.vsync,
-            MenuAction::FovDown => comfort.fov_degrees = (comfort.fov_degrees - 5.0).max(55.0),
-            MenuAction::FovUp => comfort.fov_degrees = (comfort.fov_degrees + 5.0).min(80.0),
-            MenuAction::SensDown => {
-                comfort.sensitivity = (comfort.sensitivity - 0.0002).max(0.0004)
-            }
-            MenuAction::SensUp => comfort.sensitivity = (comfort.sensitivity + 0.0002).min(0.004),
-            MenuAction::SoundDown => {
-                comfort.ambience_volume = (comfort.ambience_volume - 0.10).max(0.0);
-            }
-            MenuAction::SoundUp => {
-                comfort.ambience_volume = (comfort.ambience_volume + 0.10).min(1.0);
-                comfort.ambience_muted = false;
-            }
-            MenuAction::SoundMute => comfort.ambience_muted = !comfort.ambience_muted,
-            MenuAction::Vhs => comfort.vhs = comfort.vhs.next(),
-            MenuAction::Quit => {
-                exit.write(AppExit::Success);
-            }
-        }
-    }
 }
 
 pub fn request_awakening(session: &mut Session) {
@@ -308,116 +165,32 @@ pub fn request_awakening(session: &mut Session) {
     }
 }
 
-pub fn refresh(
+pub fn refresh_hud(
     session: Res<Session>,
     comfort: Res<Comfort>,
     performance: Res<Performance>,
-    mut roots: Query<(&Root, &mut Node), Without<MenuAction>>,
-    mut actions: Query<(&MenuAction, &mut Node)>,
-    mut labels: Query<(&TextRole, &mut Text)>,
+    mut root: Query<&mut Node, With<Hud>>,
+    mut labels: Query<(&HudLabel, &mut Text)>,
 ) {
-    for (root, mut node) in &mut roots {
-        let shown = match root {
-            Root::Menu => session.screen != Screen::Playing && !session.wake_confirmation,
-            Root::Wake => session.screen == Screen::Paused && session.wake_confirmation,
-            Root::Hud => session.screen == Screen::Playing,
-        };
-        let display = if shown { Display::Flex } else { Display::None };
-        if node.display != display {
-            node.display = display;
-        }
+    if let Ok(mut root) = root.single_mut() {
+        menu::show(&mut root, session.screen == Screen::Playing);
     }
-    for (action, mut node) in &mut actions {
-        if matches!(action, MenuAction::OpenWake) {
-            let display = if session.screen == Screen::Paused {
-                Display::Flex
-            } else {
-                Display::None
-            };
-            if node.display != display {
-                node.display = display;
-            }
-        }
+    if session.screen != Screen::Playing {
+        return;
     }
     for (role, mut label) in &mut labels {
         let value = match role {
-            TextRole::Heading => match session.screen {
-                Screen::Paused => "REGISTRO PAUSADO".into(),
-                Screen::Complete => "AINDA VIVO".into(),
-                _ => "AINDA VIVO".into(),
-            },
-            TextRole::Subtitle => match session.screen {
-                Screen::Complete if session.expedition.can_resume() => {
-                    "Registro interrompido. O posto conserva a última leitura.".into()
-                }
-                Screen::Complete
-                    if session.expedition.observer().outcome() == Some(Outcome::Interrupted) =>
-                {
-                    "Registro interrompido. Nenhuma baixa foi assinada.".into()
-                }
-                Screen::Complete if session.memory().service == ServiceTrail::Reconciled => {
-                    "Vistoria arquivada. A via 17 segue assinada após o cancelamento.".into()
-                }
-                Screen::Complete => {
-                    "Vistoria arquivada. A câmera da nave continua gravando.".into()
-                }
-                Screen::Paused => "Respire. O corredor pode esperar.".into(),
-                _ => "Estação 07 · Vistoria noturna".into(),
-            },
-            TextRole::Button(action) => match action {
-                MenuAction::Main => match session.screen {
-                    Screen::Paused => "CONTINUAR   [ENTER / ESC]",
-                    Screen::Complete if session.expedition.can_resume() => {
-                        "RETOMAR DO POSTO   [ENTER]"
-                    }
-                    _ => "INICIAR EXPEDIÇÃO   [ENTER]",
-                }
-                .into(),
-                MenuAction::Bodycam => format!(
-                    "BALANÇO: {}",
-                    if comfort.bodycam {
-                        "SUAVE"
-                    } else {
-                        "DESLIGADO"
-                    }
-                ),
-                MenuAction::Vsync => format!(
-                    "VSYNC: {}",
-                    if comfort.vsync { "LIGADO" } else { "DESLIGADO" }
-                ),
-                MenuAction::SoundMute if comfort.ambience_muted => "SOM MUDO  ·  ATIVAR".into(),
-                MenuAction::SoundMute => {
-                    format!("SOM {:.0}%  ·  SILENCIAR", comfort.ambience_volume * 100.0)
-                }
-                MenuAction::Vhs => format!("VHS: {}  [F4]", comfort.vhs.label()),
-                _ => continue,
-            },
-            TextRole::Settings => format!(
-                "Campo vertical {:.0}°   |   Mouse {:.1}   |   Balanço até 5 mm",
-                comfort.fov_degrees,
-                comfort.sensitivity * 1000.0
-            ),
-            TextRole::Recording => format!(
+            HudLabel::Recording => format!(
                 "● REC   {:02}:{:02}   /   AINDA VIVO",
                 session.elapsed as u32 / 60,
                 session.elapsed as u32 % 60
             ),
-            TextRole::Objective => session.objective().into(),
-            TextRole::Prompt => session.prompt.clone(),
-            TextRole::Message => {
-                if session.message_left > 0.0 {
-                    session.message.into()
-                } else {
-                    String::new()
-                }
-            }
-            TextRole::Performance => {
-                if comfort.diagnostics {
-                    performance.text.clone()
-                } else {
-                    String::new()
-                }
-            }
+            HudLabel::Objective => session.objective().into(),
+            HudLabel::Prompt => session.prompt.clone(),
+            HudLabel::Message if session.message_left > 0.0 => session.message.into(),
+            HudLabel::Message => String::new(),
+            HudLabel::Performance if comfort.diagnostics => performance.text.clone(),
+            HudLabel::Performance => String::new(),
         };
         if label.0 != value {
             label.0 = value;

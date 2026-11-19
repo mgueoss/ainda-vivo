@@ -33,9 +33,9 @@ impl VhsMode {
 
     pub fn label(self) -> &'static str {
         match self {
-            Self::Off => "DESLIGADO",
-            Self::Soft => "SUAVE",
-            Self::Strong => "FORTE",
+            Self::Off => "Desligado",
+            Self::Soft => "Suave",
+            Self::Strong => "Forte",
         }
     }
 

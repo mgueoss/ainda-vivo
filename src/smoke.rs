@@ -1,6 +1,7 @@
 //! Bounded integration check for the full inspection, including the return and the exit.
 pub mod continuity;
 pub mod echoes;
+pub mod menu;
 use crate::{
     app::*,
     atmosphere::{
@@ -36,6 +37,7 @@ pub struct SmokeTest {
     pub enabled: bool,
     pub reality: bool,
     pub echoes: bool,
+    pub menu: bool,
     pub check_audio: bool,
     frame: u32,
     paused_position: Vec3,
@@ -68,10 +70,12 @@ pub struct SmokeTest {
 impl SmokeTest {
     pub fn from_args() -> Self {
         let args: Vec<_> = std::env::args().collect();
-        let echoes = args.iter().any(|a| a == "--smoke-echoes");
-        let reality = !echoes && args.iter().any(|a| a == "--smoke-reality");
+        let menu = args.iter().any(|a| a == "--smoke-menu");
+        let echoes = !menu && args.iter().any(|a| a == "--smoke-echoes");
+        let reality = !menu && !echoes && args.iter().any(|a| a == "--smoke-reality");
         Self {
-            enabled: echoes || reality || args.iter().any(|a| a == "--smoke-test"),
+            enabled: menu || echoes || reality || args.iter().any(|a| a == "--smoke-test"),
+            menu,
             reality,
             echoes,
             check_audio: args.iter().any(|a| a == "--check-audio"),
@@ -205,7 +209,7 @@ pub fn drive(
     mut commands: Commands,
     exit: MessageWriter<AppExit>,
 ) {
-    if !smoke.enabled || smoke.reality || smoke.echoes {
+    if !smoke.enabled || smoke.reality || smoke.echoes || smoke.menu {
         return;
     }
     smoke.frame += 1;

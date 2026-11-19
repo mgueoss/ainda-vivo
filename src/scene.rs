@@ -216,6 +216,7 @@ pub fn setup(
     b.commands.spawn((
         Name::new("Câmera local"),
         MainCamera,
+        bevy::camera::visibility::RenderLayers::none(),
         bevy::ui::IsDefaultUiCamera,
         Camera3d::default(),
         bevy::camera::Exposure { ev100: 8.75 },

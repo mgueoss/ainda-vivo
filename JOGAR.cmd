@@ -1,5 +1,9 @@
 @echo off
 cd /d "%~dp0"
+if exist "%~dp0windows\ainda-vivo-v0.0.10-menu.exe" (
+    start "" "%~dp0windows\ainda-vivo-v0.0.10-menu.exe"
+    exit /b
+)
 if exist "%~dp0windows\ainda-vivo-v0.0.10.exe" (
     start "" "%~dp0windows\ainda-vivo-v0.0.10.exe"
     exit /b

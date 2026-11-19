@@ -45,31 +45,6 @@ pub fn read_input(
     if keys.just_pressed(KeyCode::F4) {
         comfort.vhs = comfort.vhs.next();
     }
-    if keys.just_pressed(KeyCode::Escape) {
-        if session.wake_confirmation {
-            session.wake_confirmation = false;
-        } else {
-            session.screen = match session.screen {
-                Screen::Playing => Screen::Paused,
-                Screen::Paused => Screen::Playing,
-                other => other,
-            };
-        }
-        player.command = default();
-        player.look_armed = false;
-        return;
-    }
-    if keys.just_pressed(KeyCode::Enter) {
-        match session.screen {
-            Screen::Menu | Screen::Complete => {
-                continue_or_restart(&mut session, &mut player, &mut comfort)
-            }
-            Screen::Paused if !session.wake_confirmation => session.screen = Screen::Playing,
-            Screen::Paused => (),
-            Screen::Playing => (),
-        }
-        return;
-    }
     if session.screen != Screen::Playing {
         player.command = default();
         player.look_armed = false;

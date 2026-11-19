@@ -8,13 +8,13 @@ Protótipo Windows feito em Rust e Bevy. O usuário dirige o projeto. A priorida
 
 ## Jogar
 
-Para jogar, baixe o pacote Windows, extraia e abra **AINDA-VIVO.exe**. A v0.0.10 é a versão recomendada para testes. [GitHub Release v0.0.10](https://github.com/mgueoss/ainda-vivo/releases/tag/v0.0.10) · [Distribuição portátil e dependências](docs/DISTRIBUICAO.md)
+Para jogar, baixe o pacote Windows, extraia e abra **AINDA-VIVO.exe**. A v0.0.10 com o menu renovado é a versão recomendada para testes. [ZIP com a nova abertura](https://github.com/mgueoss/ainda-vivo/releases/download/v0.0.10/ainda-vivo-v0.0.10-windows-x64-menu.zip) · [GitHub Release v0.0.10](https://github.com/mgueoss/ainda-vivo/releases/tag/v0.0.10) · [Distribuição portátil e dependências](docs/DISTRIBUICAO.md)
 
-No checkout com o binário local, **JOGAR.cmd** inicia `windows/ainda-vivo-v0.0.10.exe`. Para compilar pelo fonte e acompanhar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
+No checkout com o binário local, **JOGAR.cmd** abre a revisão do menu quando disponível. Para compilar pelo fonte e acompanhar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
 
 Sem executável pronto, o mesmo atalho compila e executa. A primeira compilação baixa as bibliotecas oficiais do motor; não baixa modelos, texturas, áudio ou pacotes de jogo. Compilações seguintes reaproveitam o cache.
 
-No menu, clique em **INICIAR EXPEDIÇÃO** ou pressione **Enter**. Pegue o fusível na oficina à esquerda. Use **E** no manômetro da **Bomba 02**, siga as indicações de **ELÉTRICA** e rearme o quadro geral. Volte à mesma bomba para registrar a segunda leitura e liberar a comporta. A saída fica depois da bacia de decantação. O Arquivo e a sala de Controle guardam registros opcionais.
+No menu, escolha **Iniciar expedição** com o mouse ou navegue com as setas ou **Tab** e confirme com **Enter**. Pegue o fusível na oficina à esquerda. Use **E** no manômetro da **Bomba 02**, siga as indicações de **ELÉTRICA** e rearme o quadro geral. Volte à mesma bomba para registrar a segunda leitura e liberar a comporta. A saída fica depois da bacia de decantação. O Arquivo e a sala de Controle guardam registros opcionais. [Abertura e controles do menu](docs/MENU-v0.0.10.md)
 
 **Despertar** fica no menu de pausa e pede confirmação. Use **E** no interruptor da luminária para iluminar a mesa do Arquivo.
 

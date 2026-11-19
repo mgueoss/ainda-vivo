@@ -2,6 +2,8 @@
 
 ## v0.0.10 — Ecos do Desaparecimento
 
+- Abertura reformulada com uma arte original da Estação 07, Configurações e Controles em painéis próprios e navegação por mouse ou teclado.
+- Pausa, retomada e confirmação de Despertar usam a mesma identidade visual. A revisão do menu integra a v0.0.10. [Detalhes](docs/MENU-v0.0.10.md)
 - A estação registra por onde o operador passou, o que consultou, quais objetos observou e o ritmo dos passos. Uma alteração visual precisa de uma referência que ele realmente tenha visto.
 - A segunda via da OS 17 liga o Arquivo, a Elétrica e o Controle. Passos fora de quadro, a ficha deslocada e um segundo quadro da Câmera 02 deixam pistas sobre Borges. A vistoria da Bomba 02 independe dessa investigação.
 - A luminária do Arquivo oferece uma pausa com transições suaves de luz e de ambiência. A Presença pode voltar à Triagem em rotas que já passaram pelo local.
