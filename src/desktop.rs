@@ -1,5 +1,6 @@
 use crate::{app::*, smoke::SmokeTest};
 use ainda_vivo_core::collision::Aabb;
+use ainda_vivo_core::psychology::Motor;
 use ainda_vivo_core::{Vec2, movement::SPAWN};
 use bevy::{
     input::mouse::AccumulatedMouseMotion,
@@ -97,9 +98,35 @@ pub fn simulate(
     }
     let bounds = &solids.as_ref().expect("collision lists initialized")
         [usize::from(session.progress().exit_unlocked())];
-    let command = player.command;
+    let dt = time.delta_secs();
+    if let Some(age) = &mut session.farewell {
+        *age += dt;
+        let ended = *age >= crate::psychology::presentation::FAREWELL_SECONDS;
+        let command = ainda_vivo_core::movement::PlayerCommand {
+            crouch: true,
+            ..default()
+        };
+        player.body.step(command, dt, bounds);
+        if ended {
+            session.screen = Screen::Complete;
+        }
+        return;
+    }
+    let mut command = player.command;
+    if command.movement.length_squared() > 0.04 || command.jump {
+        session.resting = false;
+    }
     player.command.jump = false;
-    player.body.step(command, time.delta_secs(), bounds);
+    let motor = session.psychology.motor();
+    if motor != Motor::Steady && player.body.grounded {
+        command.sprint = false;
+        command.movement *= 1.0 - 0.23 * session.psychology.motor_strength();
+        if motor == Motor::Kneeling {
+            command.crouch = true;
+            command.jump = false;
+        }
+    }
+    player.body.step(command, dt, bounds);
     if player.body.feet.y < -8.0 || !player.body.feet.is_finite() {
         player.body = default();
         player.body.feet = SPAWN;
@@ -111,6 +138,25 @@ pub fn simulate(
         session.cross_exit();
     }
     session.age_exit_receipt();
+    if session.screen == Screen::Playing {
+        let recovery = crate::psychology::recovery(&session, &player);
+        session.psychology.step(dt, recovery);
+        if session.psychology.expired() {
+            session.farewell = Some(0.0);
+            session.prompt.clear();
+            session.false_exit = None;
+        } else if session.psychology.critical_remaining().is_some() != session.critical_hint {
+            session.critical_hint = !session.critical_hint;
+            let message = match (session.critical_hint, session.psychology.has_reserve()) {
+                (true, true) => {
+                    "O fôlego está falhando. Procure a luz âmbar de um posto ou use a reserva [R]."
+                }
+                (true, false) => "O fôlego está falhando. Procure a luz âmbar de um posto.",
+                (false, _) => "O fôlego começa a voltar.",
+            };
+            session.say(message);
+        }
+    }
 }
 
 pub fn update_camera(
@@ -125,9 +171,10 @@ pub fn update_camera(
     let Ok((mut transform, mut projection)) = camera.single_mut() else {
         return;
     };
-    let blend = 1.0 - (-14.0 * time.delta_secs().min(0.1)).exp();
+    let rate = if session.collapse_active() { 2.6 } else { 14.0 };
+    let blend = 1.0 - (-rate * time.delta_secs().min(0.1)).exp();
     let eye_target = if player.body.crouched { 0.93 } else { 1.62 };
-    if session.screen == Screen::Playing {
+    if session.screen == Screen::Playing && (!session.collapse_active() || comfort.psycho_motion) {
         player.eye_height += (eye_target - player.eye_height) * blend;
     }
     let alpha = if session.screen == Screen::Playing {

@@ -200,11 +200,15 @@ impl Site {
     }
 }
 
+use ainda_vivo_core::psychology::{Origin, Stimulus};
+
 struct Sighting {
     site: usize,
     since: f32,
     checked_at: f32,
     framed_for: f32,
+    focused_for: f32,
+    scrutinized: bool,
     hidden_since: Option<f32>,
     rotation: Quat,
 }
@@ -216,6 +220,7 @@ pub struct Presence {
     pub contact: Option<Trace>,
     seen: [bool; SITES.len()],
     witnessed: Option<f32>,
+    sustained: Option<f32>,
     appearances: [u8; SITES.len()],
     last_site: Option<(usize, f32)>,
     retired_unseen: u32,
@@ -321,6 +326,8 @@ impl Presence {
                 since: elapsed,
                 checked_at: elapsed,
                 framed_for: 0.0,
+                focused_for: 0.0,
+                scrutinized: false,
                 hidden_since: None,
                 rotation,
             });
@@ -369,6 +376,18 @@ impl Presence {
                     at: elapsed,
                     position: site.feet,
                 });
+            }
+        }
+        if !sighting.scrutinized {
+            let direction = (site.target() + offset - camera.translation).normalize_or_zero();
+            if in_view && alpha >= 0.48 && camera.forward().dot(direction) > 0.91 {
+                sighting.focused_for += (elapsed - sighting.checked_at).clamp(0.0, 0.1);
+                if sighting.focused_for >= 2.15 {
+                    sighting.scrutinized = true;
+                    self.sustained = Some(distance);
+                }
+            } else {
+                sighting.focused_for = 0.0;
             }
         }
         sighting.checked_at = elapsed;
@@ -440,6 +459,7 @@ pub fn update(
     };
     let was_active = presence.active();
     if session.screen == Screen::Playing
+        && !session.collapse_active()
         && let Ok((camera, Projection::Perspective(lens))) = cameras.single()
         && let Some((pose, alpha)) = presence.advance(
             session.elapsed,
@@ -469,6 +489,19 @@ pub fn update(
         }
         if let Some(at) = presence.witnessed.take() {
             session.memory_mut().note_sighting(at);
+            let distance = pose.translation.distance(camera.translation);
+            session.stimulate(
+                Stimulus::Sighting,
+                Origin::Presence,
+                (1.0 - distance / 35.0).clamp(0.2, 1.0),
+            );
+        }
+        if let Some(distance) = presence.sustained.take() {
+            session.stimulate(
+                Stimulus::Gaze,
+                Origin::Presence,
+                (1.0 - distance / 36.0).clamp(0.2, 1.0),
+            );
         }
         *transform = pose;
         *visibility = Visibility::Visible;
@@ -492,7 +525,7 @@ pub fn audit_sites(world: &CollisionWorld) -> Result<usize, &'static str> {
     Ok(SITES.len())
 }
 
-pub(super) fn mask() -> Image {
+pub(crate) fn mask() -> Image {
     const SIZE: UVec2 = UVec2::new(128, 224);
     let mut pixels = Vec::with_capacity((SIZE.x * SIZE.y * 4) as usize);
     for y in 0..SIZE.y {

@@ -53,6 +53,7 @@ struct Context {
     anomalies: u8,
     echo_ready: bool,
     relay_ready: bool,
+    strain: f32,
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -261,11 +262,12 @@ impl Director {
         let recently_here = self.recent_sectors[1..].contains(&context.sector);
         let first = if let Some(requested) = self.requested.take() {
             Some(requested)
-        } else if roll < 0.12 && now > 14.0 {
+        } else if roll < 0.12 + context.strain * 0.30 && now > 14.0 {
             None
         } else if context.echo_ready {
             Some(Cue::Sound)
         } else if context.relay_ready
+            || context.strain > 0.1 && roll < 0.64
             || context.distortion && roll > 0.44 + f32::from(context.anomalies.min(4)) * 0.035
         {
             Some(Cue::Illusion)
@@ -350,7 +352,7 @@ pub fn update(
         director.quiet_until = session.elapsed + 7.0;
         director.set_mood(Mood::Relief);
     }
-    if session.screen != Screen::Playing {
+    if session.screen != Screen::Playing || session.collapse_active() {
         return;
     }
     let sector = station::sector_id(player.body.feet);
@@ -385,12 +387,15 @@ pub fn update(
                 || atmosphere.quiet > 0.14
                 || atmosphere.episode.holding_silence()
                 || threat.active()
+                || session.psychology.value() >= 60.0
+                    && session.psychology.recovery() != ainda_vivo_core::psychology::Recovery::None
                 || station::lamp_refuge(memory.desk_light, player.body.feet)
                 || matches!(session.false_exit, Some(ExitPresentation::Receipt { .. })),
             distortion: distorted,
             anomalies: illusions.altered,
             echo_ready,
             relay_ready,
+            strain: ((session.psychology.value() - 55.0) / 45.0).clamp(0.0, 1.0),
         },
         time.delta_secs(),
     );
@@ -412,6 +417,7 @@ mod tests {
             anomalies: 0,
             echo_ready: false,
             relay_ready: false,
+            strain: 0.0,
         }
     }
 

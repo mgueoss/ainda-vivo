@@ -9,6 +9,7 @@ pub use ainda_vivo_core::memory::Prop as ImpressionId;
 use ainda_vivo_core::{
     collision::Aabb,
     memory::ServiceTrail,
+    psychology::{Origin, Stimulus},
     story::{Action, Phase},
 };
 use bevy::{light::NotShadowCaster, prelude::*};
@@ -291,7 +292,10 @@ pub fn update(
             impression.stage = u8::from(relay_changed);
             impression.last_change = 0.0;
         }
-        if session.screen != Screen::Playing || session.progress().phase() < impression.phase {
+        if session.screen != Screen::Playing
+            || session.collapse_active()
+            || session.progress().phase() < impression.phase
+        {
             continue;
         }
         let now = session.elapsed;
@@ -315,16 +319,6 @@ pub fn update(
                 continue;
             }
         }
-        let next = match impression.stage {
-            0 => &impression.changed,
-            1 if view && director.revisit && now - impression.last_change > 14.0 => {
-                let Some(second) = &impression.second else {
-                    continue;
-                };
-                second
-            }
-            _ => continue,
-        };
         // The renderer reads the same small set of entities in every reality.
         // Only cast an occlusion ray when the player is actually inspecting one.
         let offset = pose.translation + Vec3::Y * 0.032 - camera.translation;
@@ -340,9 +334,27 @@ pub fn update(
                 session.progress().exit_unlocked(),
             );
         let attention = attention(facing, clear_ray);
+        let previous = session.memory().knows_variant(id, stage);
         session
             .memory_mut()
             .look(id, stage, now, attention == Attention::Inspecting);
+        if stage > 0 && !previous && session.memory().knows_variant(id, stage) {
+            session.stimulate(
+                Stimulus::Anomaly,
+                Origin::External,
+                if stage > 1 { 1.0 } else { 0.6 },
+            );
+        }
+        let next = match impression.stage {
+            0 => &impression.changed,
+            1 if view && director.revisit && now - impression.last_change > 14.0 => {
+                let Some(second) = &impression.second else {
+                    continue;
+                };
+                second
+            }
+            _ => continue,
+        };
         let can_shift = id != ImpressionId::Relay || session.memory().relay_due(now, view);
         match attention {
             Attention::Away

@@ -10,6 +10,7 @@ use bevy::prelude::*;
 #[derive(Resource, Default)]
 pub struct Developer {
     pub enabled: bool,
+    pub psychology: bool,
     pub seed: Option<u32>,
 }
 
@@ -18,6 +19,7 @@ impl Developer {
         let args: Vec<_> = std::env::args().collect();
         Self {
             enabled: args.iter().any(|arg| arg == "--dev-reality"),
+            psychology: args.iter().any(|arg| arg == "--dev-psychology"),
             seed: args
                 .windows(2)
                 .find(|pair| pair[0] == "--seed")
@@ -70,7 +72,7 @@ pub fn update(
         threat.approach = Approach::Closed;
         return;
     }
-    if session.screen != Screen::Playing {
+    if session.screen != Screen::Playing || session.collapse_active() {
         return;
     }
     if let Some(trace) = presence.contact
@@ -103,6 +105,11 @@ pub fn update(
         ContactEvent::Warning => {
             threat.warning = Some(trace.position);
             threat.warnings += 1;
+            session.stimulate(
+                ainda_vivo_core::psychology::Stimulus::Contact,
+                ainda_vivo_core::psychology::Origin::Presence,
+                0.78,
+            );
         }
         ContactEvent::Capture if session.expedition.capture(now) => threat.captures += 1,
         _ => (),
@@ -115,7 +122,7 @@ pub fn tools(
     mut session: ResMut<Session>,
     mut director: ResMut<Director>,
 ) {
-    if !developer.enabled || session.screen != Screen::Playing {
+    if !developer.enabled || session.screen != Screen::Playing || session.collapse_active() {
         return;
     }
     if keys.just_pressed(KeyCode::F6) {

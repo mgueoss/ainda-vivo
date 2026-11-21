@@ -19,7 +19,7 @@ pub fn interact(
     targets: Query<&Interactable>,
 ) {
     session.prompt.clear();
-    if session.screen != Screen::Playing {
+    if session.screen != Screen::Playing || session.collapse_active() {
         return;
     }
     let Ok(camera) = camera.single() else {

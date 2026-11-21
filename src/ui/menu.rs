@@ -19,6 +19,7 @@ pub enum Action {
     #[default]
     Main,
     Settings,
+    Accessibility,
     Controls,
     Back,
     Restart,
@@ -35,6 +36,10 @@ pub enum Action {
     Bodycam,
     Vhs,
     Vsync,
+    PsychologicalEffectsDown,
+    PsychologicalEffectsUp,
+    CrisisCamera,
+    StabilityIndicator,
     Quit,
 }
 
@@ -43,6 +48,7 @@ pub enum Page {
     #[default]
     Home,
     Settings,
+    Accessibility,
     Controls,
 }
 
@@ -92,10 +98,30 @@ impl Menu {
         }
         match self.page {
             Page::Settings => &[
-                FovDown, FovUp, SensDown, SensUp, Bodycam, Vhs, Vsync, VolumeDown, VolumeUp, Mute,
+                FovDown,
+                FovUp,
+                SensDown,
+                SensUp,
+                Bodycam,
+                Vhs,
+                Vsync,
+                VolumeDown,
+                VolumeUp,
+                Mute,
+                Accessibility,
+                Back,
+            ],
+            Page::Accessibility => &[
+                PsychologicalEffectsDown,
+                PsychologicalEffectsUp,
+                CrisisCamera,
+                StabilityIndicator,
                 Back,
             ],
             Page::Controls => &[Back],
+            Page::Home if session.screen == Screen::Paused && session.collapse_active() => {
+                &[Main, Settings, Controls, Restart, Quit]
+            }
             Page::Home if session.screen == Screen::Paused => {
                 &[Main, Settings, Controls, Restart, Wake, Quit]
             }
@@ -121,12 +147,12 @@ impl Menu {
     }
 
     fn back(&mut self) {
-        self.focus = match self.page {
-            Page::Settings => Action::Settings,
-            Page::Controls => Action::Controls,
-            Page::Home => Action::Main,
+        (self.page, self.focus) = match self.page {
+            Page::Accessibility => (Page::Settings, Action::Accessibility),
+            Page::Settings => (Page::Home, Action::Settings),
+            Page::Controls => (Page::Home, Action::Controls),
+            Page::Home => (Page::Home, Action::Main),
         };
-        self.page = Page::Home;
     }
 }
 
@@ -206,6 +232,10 @@ pub fn input(
             menu.page = Page::Settings;
             menu.focus = Action::FovDown;
         }
+        Some(Action::Accessibility) => {
+            menu.page = Page::Accessibility;
+            menu.focus = Action::PsychologicalEffectsDown;
+        }
         Some(Action::Controls) => {
             menu.page = Page::Controls;
             menu.focus = Action::Back;
@@ -229,6 +259,14 @@ pub fn input(
         Some(Action::Bodycam) => comfort.bodycam = !comfort.bodycam,
         Some(Action::Vhs) => comfort.vhs = comfort.vhs.next(),
         Some(Action::Vsync) => comfort.vsync = !comfort.vsync,
+        Some(Action::PsychologicalEffectsDown) => {
+            comfort.psycho_av = (comfort.psycho_av - 0.25).max(0.0);
+        }
+        Some(Action::PsychologicalEffectsUp) => {
+            comfort.psycho_av = (comfort.psycho_av + 0.25).min(1.0);
+        }
+        Some(Action::CrisisCamera) => comfort.psycho_motion = !comfort.psycho_motion,
+        Some(Action::StabilityIndicator) => comfort.psycho_indicator = !comfort.psycho_indicator,
         Some(Action::Quit) => {
             exit.write(AppExit::Success);
         }
@@ -246,6 +284,7 @@ pub enum Region {
     Record,
     MainShortcut,
     Settings,
+    Accessibility,
     Controls,
     Restart,
     WakeAction,
@@ -268,6 +307,9 @@ pub enum Label {
     Bodycam,
     Vhs,
     Vsync,
+    PsychologicalEffects,
+    CrisisCamera,
+    StabilityIndicator,
 }
 
 #[derive(Component, Clone, Copy)]
@@ -384,11 +426,14 @@ pub fn refresh(
                 Region::Home => showing_page && menu.page == Page::Home,
                 Region::MainShortcut => menu.focus == Action::Main,
                 Region::Settings => showing_page && menu.page == Page::Settings,
+                Region::Accessibility => showing_page && menu.page == Page::Accessibility,
                 Region::Controls => showing_page && menu.page == Page::Controls,
                 Region::Restart => {
                     session.screen == Screen::Paused || session.expedition.can_resume()
                 }
-                Region::WakeAction => session.screen == Screen::Paused,
+                Region::WakeAction => {
+                    session.screen == Screen::Paused && !session.collapse_active()
+                }
                 Region::Confirmation => showing && session.wake_confirmation,
             },
         );
@@ -416,6 +461,8 @@ pub fn refresh(
         let value = match role {
             Label::Outcome => if session.screen == Screen::Paused {
                 "Pausa"
+            } else if session.collapse_finished() {
+                "Registro perdido"
             } else {
                 "Registro encerrado"
             }
@@ -455,6 +502,19 @@ pub fn refresh(
             .into(),
             Label::Vhs => comfort.vhs.label().into(),
             Label::Vsync => if comfort.vsync { "Ligado" } else { "Desligado" }.into(),
+            Label::PsychologicalEffects => format!("{:.0}%", comfort.psycho_av * 100.0),
+            Label::CrisisCamera => if comfort.psycho_motion {
+                "Ativa"
+            } else {
+                "Reduzida"
+            }
+            .into(),
+            Label::StabilityIndicator => if comfort.psycho_indicator {
+                "Visível"
+            } else {
+                "Oculto"
+            }
+            .into(),
         };
         if text.0 != value {
             text.0 = value;
@@ -465,6 +525,7 @@ pub fn refresh(
 fn record_summary(session: &Session) -> &'static str {
     match session.screen {
         Screen::Paused => "",
+        Screen::Complete if session.collapse_finished() => "A chamada do posto ficou sem resposta.",
         Screen::Complete if session.expedition.can_resume() => {
             "Registro interrompido. O posto conserva a última leitura."
         }

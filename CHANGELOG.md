@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.0.11 — Colapso
+
+- Seis níveis psicológicos com adaptação a estímulos repetidos, histórico por operador e uma janela crítica recuperável.
+- Postos de pausa, refúgio da luminária do Arquivo e uma reserva fictícia de foco por tentativa.
+- Respiração, pulso, alterações sonoras e a sequência **A despedida**. Configurações de intensidade audiovisual, movimento da câmera e indicador opcional.
+- Integração com a captura silenciosa, Despertar e o ritmo da Presença. [Regras e comandos de diagnóstico](AINDA-VIVO-HANDOFF-v0.0.11.md) · [Validação e distribuição](docs/VALIDACAO-v0.0.11.md)
+
 ## v0.0.10 — Ecos do Desaparecimento
 
 - Abertura reformulada com uma arte original da Estação 07, Configurações e Controles em painéis próprios e navegação por mouse ou teclado.

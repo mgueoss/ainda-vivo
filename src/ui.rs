@@ -4,7 +4,7 @@ pub use menu::{
     Action as MenuAction, Menu, Page as MenuPage, input as menu_input, refresh as refresh_menu,
 };
 
-use crate::{app::*, diagnostics::Performance, preferences::Preferences};
+use crate::{app::*, diagnostics::Performance, preferences::Preferences, psychology::Effects};
 use bevy::{prelude::*, text::FontWeight};
 
 const INK: Color = Color::srgb(0.84, 0.87, 0.81);
@@ -17,6 +17,7 @@ pub enum HudLabel {
     Prompt,
     Message,
     Performance,
+    Psychology,
 }
 
 #[derive(Component)]
@@ -118,6 +119,17 @@ pub fn setup(
                 }
             ),
             (
+                style.body("", 16.0, Color::srgb(0.93, 0.77, 0.53)),
+                HudLabel::Psychology,
+                Node {
+                    position_type: PositionType::Absolute,
+                    top: px(51),
+                    left: px(26),
+                    max_width: percent(60),
+                    ..default()
+                }
+            ),
+            (
                 style.mono("·", 24.0, Color::srgba(0.9, 0.94, 0.9, 0.75)),
                 Node {
                     position_type: PositionType::Absolute,
@@ -160,7 +172,7 @@ pub fn setup(
 }
 
 pub fn request_awakening(session: &mut Session) {
-    if session.screen == Screen::Paused {
+    if session.screen == Screen::Paused && !session.collapse_active() {
         session.wake_confirmation = true;
     }
 }
@@ -169,13 +181,15 @@ pub fn refresh_hud(
     session: Res<Session>,
     comfort: Res<Comfort>,
     performance: Res<Performance>,
+    effects: Res<Effects>,
     mut root: Query<&mut Node, With<Hud>>,
     mut labels: Query<(&HudLabel, &mut Text)>,
 ) {
+    let visible = session.screen == Screen::Playing && effects.farewell.is_none();
     if let Ok(mut root) = root.single_mut() {
-        menu::show(&mut root, session.screen == Screen::Playing);
+        menu::show(&mut root, visible);
     }
-    if session.screen != Screen::Playing {
+    if !visible {
         return;
     }
     for (role, mut label) in &mut labels {
@@ -191,9 +205,54 @@ pub fn refresh_hud(
             HudLabel::Message => String::new(),
             HudLabel::Performance if comfort.diagnostics => performance.text.clone(),
             HudLabel::Performance => String::new(),
+            HudLabel::Psychology if comfort.psycho_indicator => {
+                instability_label(effects.stage, effects.remaining.map(|_| effects.critical)).into()
+            }
+            HudLabel::Psychology => String::new(),
         };
         if label.0 != value {
             label.0 = value;
         }
+    }
+}
+
+fn instability_label(stage: u8, critical_progress: Option<f32>) -> &'static str {
+    if let Some(progress) = critical_progress {
+        return match progress {
+            value if value < 0.25 => "Colapso · Procure um posto iluminado",
+            value if value < 0.50 => "Colapso · Procure abrigo agora",
+            value if value < 0.75 => "Colapso · Recuperação urgente",
+            _ => "Colapso · Recuperação imediata",
+        };
+    }
+    match stage {
+        0 => "Estável",
+        1 => "Inquietação",
+        2 => "Paranoia",
+        3 => "Desorientação",
+        4 => "Pré-colapso",
+        _ => "Colapso",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn optional_indicator_reports_urgency_instead_of_a_precise_timer() {
+        assert_eq!(instability_label(4, None), "Pré-colapso");
+        assert_eq!(
+            instability_label(5, Some(0.20)),
+            "Colapso · Procure um posto iluminado"
+        );
+        assert_eq!(
+            instability_label(5, Some(0.50)),
+            "Colapso · Recuperação urgente"
+        );
+        assert_eq!(
+            instability_label(5, Some(0.99)),
+            "Colapso · Recuperação imediata"
+        );
     }
 }

@@ -88,5 +88,14 @@
     "zipSha256": null,
     "changelog": "A Estação 07 passa a lembrar o que você observou, leu e ouviu. Investigue a segunda via azul da OS 17 no Arquivo, use a luminária de mesa e procure indícios nos registros da Elétrica e do Controle. A vistoria da Bomba 02 continua disponível em qualquer rota. Despertar pode oferecer uma retomada única no posto.\n\n[Changelog completo](https://github.com/mgueoss/ainda-vivo/blob/v0.0.10/CHANGELOG.md) · [Testes e capturas reais](https://github.com/mgueoss/ainda-vivo/blob/v0.0.10/docs/VALIDACAO-v0.0.10.md)",
     "known": "Experiência solo experimental com progresso em memória. A cadeia da OS 17 pode ficar incompleta em uma passagem rápida. Ritmo e conforto em partidas livres e a instalação efetiva do Visual C++ em Windows limpo ainda precisam de avaliação."
+  },
+  {
+    "version": "0.0.11",
+    "title": "Colapso",
+    "commit": null,
+    "exeSha256": "957501b8d97fa47745431103f50e47ad75ebe9abcbd0fc6e018a42b3a9969b90",
+    "zipSha256": null,
+    "changelog": "Seis níveis de instabilidade, crises recuperáveis, postos de pausa e uma reserva de foco. A despedida dá um desfecho ao colapso definitivo. Em Configurações → Acessibilidade, ajuste o movimento da câmera, a intensidade audiovisual e o indicador opcional.\n\n[Relatório e capturas reais](https://github.com/mgueoss/ainda-vivo/blob/v0.0.11/docs/VALIDACAO-v0.0.11.md) · [Documentação técnica com spoilers](https://github.com/mgueoss/ainda-vivo/blob/v0.0.11/AINDA-VIVO-HANDOFF-v0.0.11.md)",
+    "known": "Pré-lançamento solo. Medo, conforto e balanceamento em partidas livres aguardam avaliação humana. A reprodução de respiração e batimentos foi confirmada no dispositivo nativo durante o smoke de Colapso."
   }
 ]

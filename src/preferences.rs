@@ -60,6 +60,23 @@ impl Preferences {
                         }
                     }
                     "ambience_muted" => comfort.ambience_muted = value == "true",
+                    "psycho_av" => {
+                        if let Ok(intensity) = value.parse::<f32>()
+                            && intensity.is_finite()
+                        {
+                            comfort.psycho_av = intensity.clamp(0.0, 1.0);
+                        }
+                    }
+                    "psycho_motion" => {
+                        if let Ok(enabled) = value.parse::<bool>() {
+                            comfort.psycho_motion = enabled;
+                        }
+                    }
+                    "psycho_indicator" => {
+                        if let Ok(enabled) = value.parse::<bool>() {
+                            comfort.psycho_indicator = enabled;
+                        }
+                    }
                     "vhs" => {
                         if let Some(mode) = crate::vhs::VhsMode::parse(value) {
                             comfort.vhs = mode;
@@ -119,7 +136,7 @@ pub fn save(comfort: Res<Comfort>, mut preferences: ResMut<Preferences>) {
         return;
     };
     let mut content = format!(
-        "# AINDA VIVO - preferencias locais\nsensitivity={}\nfov={}\nbodycam={}\nvsync={}\ndiagnostics={}\nambience_volume={:.2}\nambience_muted={}\nvhs={}\n",
+        "# AINDA VIVO - preferencias locais\nsensitivity={}\nfov={}\nbodycam={}\nvsync={}\ndiagnostics={}\nambience_volume={:.2}\nambience_muted={}\nvhs={}\npsycho_av={:.2}\npsycho_motion={}\npsycho_indicator={}\n",
         comfort.sensitivity,
         comfort.fov_degrees,
         comfort.bodycam,
@@ -128,6 +145,9 @@ pub fn save(comfort: Res<Comfort>, mut preferences: ResMut<Preferences>) {
         comfort.ambience_volume,
         comfort.ambience_muted,
         comfort.vhs.setting(),
+        comfort.psycho_av,
+        comfort.psycho_motion,
+        comfort.psycho_indicator,
     );
     for (action, fallback, label) in [
         ("forward", KeyCode::KeyW, "W"),
@@ -188,7 +208,7 @@ mod tests {
     #[test]
     fn settings_round_trip_preserves_preferences_and_bindings() {
         let path = path();
-        std::fs::write(&path, "fov=75\nsensitivity=0.0024\nbodycam=true\nvsync=false\nambience_volume=0.42\nambience_muted=true\nvhs=off\nkey.forward=Up\nkey.interact=Q\n").unwrap();
+        std::fs::write(&path, "fov=75\nsensitivity=0.0024\nbodycam=true\nvsync=false\nambience_volume=0.42\nambience_muted=true\nvhs=off\npsycho_av=0.50\npsycho_motion=false\npsycho_indicator=true\nkey.forward=Up\nkey.interact=Q\n").unwrap();
         let (preferences, comfort) = Preferences::load_from(Some(path.clone()));
         let mut app = App::new();
         app.insert_resource(preferences)
@@ -202,6 +222,8 @@ mod tests {
         assert!(comfort.ambience_muted);
         assert_eq!(comfort.ambience_volume, 0.42);
         assert_eq!(comfort.vhs, crate::vhs::VhsMode::Off);
+        assert_eq!(comfort.psycho_av, 0.50);
+        assert!(!comfort.psycho_motion && comfort.psycho_indicator);
         assert_eq!(loaded.key("forward", KeyCode::KeyW), KeyCode::ArrowUp);
         assert_eq!(loaded.key("interact", KeyCode::KeyE), KeyCode::KeyQ);
         std::fs::remove_file(path).unwrap();
@@ -212,13 +234,16 @@ mod tests {
         let path = path();
         std::fs::write(
             &path,
-            "fov=999\nsensitivity=NaN\nkey.forward=Escape\nbroken line\n",
+            "fov=999\nsensitivity=NaN\npsycho_av=NaN\npsycho_motion=unexpected\npsycho_indicator=unexpected\nkey.forward=Escape\nbroken line\n",
         )
         .unwrap();
         let (loaded, comfort) = Preferences::load_from(Some(path.clone()));
         assert_eq!(comfort.fov_degrees, 80.0);
         assert_eq!(comfort.sensitivity, Comfort::default().sensitivity);
         assert_eq!(comfort.ambience_volume, Comfort::default().ambience_volume);
+        assert_eq!(comfort.psycho_av, Comfort::default().psycho_av);
+        assert!(comfort.psycho_motion);
+        assert!(!comfort.psycho_indicator);
         assert_eq!(loaded.key("forward", KeyCode::KeyW), KeyCode::KeyW);
         std::fs::remove_file(path).unwrap();
     }

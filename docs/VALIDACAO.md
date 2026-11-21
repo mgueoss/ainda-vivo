@@ -1,6 +1,6 @@
 # Validação — 18/11/2026
 
-A validação da versão mais recente está em [Validação v0.0.10](VALIDACAO-v0.0.10.md), com as rotas de regressão e da OS 17, áudio, capturas e integridade da distribuição.
+A validação da versão mais recente está em [Validação v0.0.11](VALIDACAO-v0.0.11.md), com crise, recuperação, acessibilidade, despedida e integridade do pacote. As rotas da versão anterior estão em [Validação v0.0.10](VALIDACAO-v0.0.10.md).
 
 A [revisão da abertura da v0.0.10](MENU-v0.0.10.md#validação) tem validação e pacote próprios na mesma release.
 

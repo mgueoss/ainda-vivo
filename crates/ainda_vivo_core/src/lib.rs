@@ -3,6 +3,7 @@
 pub mod collision;
 pub mod memory;
 pub mod movement;
+pub mod psychology;
 pub mod reality;
 pub mod story;
 

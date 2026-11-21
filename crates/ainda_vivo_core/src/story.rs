@@ -14,6 +14,7 @@ pub enum Action {
     ReadServiceOrder,
     CheckRelay,
     ToggleDeskLight,
+    RestAtPost,
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, PartialOrd, Ord)]
@@ -80,6 +81,7 @@ impl Progress {
             Action::ReadServiceOrder => "ler segunda via da OS 17",
             Action::CheckRelay => "conferir via do técnico",
             Action::ToggleDeskLight => "acionar luminária da mesa",
+            Action::RestAtPost => "descansar no posto",
         })
     }
 
@@ -130,6 +132,7 @@ impl Progress {
             }
             (Action::CheckRelay, _) => "Relé auxiliar. A via do técnico continua em branco.",
             (Action::ToggleDeskLight, _) => "",
+            (Action::RestAtPost, _) => "",
             (Action::ReviewRecording, Phase::Fuse | Phase::Baseline | Phase::Electrical) => {
                 "O gravador ainda depende do quadro geral."
             }

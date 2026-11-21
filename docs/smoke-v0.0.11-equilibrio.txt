@@ -1,0 +1,8 @@
+cauteloso: pico=25.3; final=18.7; crises=0; expirou=false; reserva=false
+curioso: pico=36.9; final=18.8; crises=0; expirou=false; reserva=false
+corrida: pico=19.3; final=19.3; crises=0; expirou=false; reserva=false
+observacao intensa: pico=100.0; final=99.8; crises=1; expirou=true; reserva=false
+ignora: pico=7.6; final=7.6; crises=0; expirou=false; reserva=false
+desorientado no mapa: pico=9.1; final=9.1; crises=0; expirou=false; reserva=false
+reserva aplicada com 70.0 pontos
+com reserva: pico=100.0; final=70.0; crises=1; expirou=false; reserva=true

@@ -1,6 +1,6 @@
-# AINDA VIVO — v0.0.10 · Ecos do Desaparecimento
+# AINDA VIVO — v0.0.11 · Colapso
 
-A vistoria da **Bomba 02** leva o jogador à nave antes e depois de rearmar o quadro geral. Para investigar o turno anterior, leia a segunda via azul da **OS 17** no Arquivo. Dê atenção ao relé auxiliar na Elétrica e à Câmera 02 no Controle. [Changelog](CHANGELOG.md) · [Documentação de continuidade com spoilers](AINDA-VIVO-HANDOFF-v0.0.10.md)
+A vistoria da **Bomba 02** leva o operador à nave antes e depois de rearmar o quadro geral. Quando o fôlego começar a falhar, procure um posto de pausa sinalizado em âmbar. Use **E** no posto para descansar e obter a reserva de foco. Pressione **R** para usá-la, se disponível. [Changelog](CHANGELOG.md) · [Documentação de continuidade com spoilers](AINDA-VIVO-HANDOFF-v0.0.11.md)
 
 O corredor leva à **Estação de Bombeamento 07**, com 15 setores, rotas laterais e cerca de 6.100 m² de planta. A tecla **F4** alterna o VHS entre suave, forte e desligado. O menu da pausa também oferece controle do VHS e do volume. [Detalhes do mapa](docs/ESTACAO-07.md)
 
@@ -8,15 +8,17 @@ Protótipo Windows feito em Rust e Bevy. O usuário dirige o projeto. A priorida
 
 ## Jogar
 
-Para jogar, baixe o pacote Windows, extraia e abra **AINDA-VIVO.exe**. A v0.0.10 com o menu renovado é a versão recomendada para testes. [ZIP com a nova abertura](https://github.com/mgueoss/ainda-vivo/releases/download/v0.0.10/ainda-vivo-v0.0.10-windows-x64-menu.zip) · [GitHub Release v0.0.10](https://github.com/mgueoss/ainda-vivo/releases/tag/v0.0.10) · [Distribuição portátil e dependências](docs/DISTRIBUICAO.md)
+Para jogar, baixe o pacote Windows, extraia e abra **AINDA-VIVO.exe**. [ZIP v0.0.11](https://github.com/mgueoss/ainda-vivo/releases/download/v0.0.11/ainda-vivo-v0.0.11-windows-x64.zip) · [GitHub Release v0.0.11](https://github.com/mgueoss/ainda-vivo/releases/tag/v0.0.11) · [Distribuição portátil e dependências](docs/DISTRIBUICAO.md)
 
-No checkout com o binário local, **JOGAR.cmd** abre a revisão do menu quando disponível. Para compilar pelo fonte e acompanhar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
+No checkout com o binário local, **JOGAR.cmd** abre a v0.0.11. Para compilar pelo fonte e acompanhar mensagens de inicialização, use `scripts/dev.ps1 -Action Run`.
 
 Sem executável pronto, o mesmo atalho compila e executa. A primeira compilação baixa as bibliotecas oficiais do motor; não baixa modelos, texturas, áudio ou pacotes de jogo. Compilações seguintes reaproveitam o cache.
 
 No menu, escolha **Iniciar expedição** com o mouse ou navegue com as setas ou **Tab** e confirme com **Enter**. Pegue o fusível na oficina à esquerda. Use **E** no manômetro da **Bomba 02**, siga as indicações de **ELÉTRICA** e rearme o quadro geral. Volte à mesma bomba para registrar a segunda leitura e liberar a comporta. A saída fica depois da bacia de decantação. O Arquivo e a sala de Controle guardam registros opcionais. [Abertura e controles do menu](docs/MENU-v0.0.10.md)
 
 **Despertar** fica no menu de pausa e pede confirmação. Use **E** no interruptor da luminária para iluminar a mesa do Arquivo.
+
+O jogo contém pânico, alterações sensoriais e colapso sobrenatural. Em **Configurações → Acessibilidade**, ajuste a intensidade audiovisual, reduza movimentos da câmera ou ative o indicador de estabilidade.
 
 | Controle | Ação |
 |---|---|
@@ -26,6 +28,7 @@ No menu, escolha **Iniciar expedição** com o mouse ou navegue com as setas ou 
 | Espaço | Pular |
 | E | Interagir com o objeto sob a mira, até 2,4 m |
 | F | Ligar/desligar a lanterna |
+| R | Usar a reserva de foco |
 | Esc | Pausar/continuar e liberar o mouse |
 | Enter | Iniciar/continuar |
 | F3 | Mostrar/ocultar FPS e diagnóstico |

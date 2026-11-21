@@ -1,4 +1,5 @@
 //! Bounded integration check for the full inspection, including the return and the exit.
+pub mod collapse;
 pub mod continuity;
 pub mod echoes;
 pub mod menu;
@@ -35,6 +36,7 @@ const CONTROL_FRAMES: u32 = 3400;
 #[derive(Resource, Default)]
 pub struct SmokeTest {
     pub enabled: bool,
+    pub collapse: bool,
     pub reality: bool,
     pub echoes: bool,
     pub menu: bool,
@@ -70,11 +72,17 @@ pub struct SmokeTest {
 impl SmokeTest {
     pub fn from_args() -> Self {
         let args: Vec<_> = std::env::args().collect();
-        let menu = args.iter().any(|a| a == "--smoke-menu");
-        let echoes = !menu && args.iter().any(|a| a == "--smoke-echoes");
-        let reality = !menu && !echoes && args.iter().any(|a| a == "--smoke-reality");
+        let collapse = args.iter().any(|a| a == "--smoke-collapse");
+        let menu = !collapse && args.iter().any(|a| a == "--smoke-menu");
+        let echoes = !collapse && !menu && args.iter().any(|a| a == "--smoke-echoes");
+        let reality = !collapse && !menu && !echoes && args.iter().any(|a| a == "--smoke-reality");
         Self {
-            enabled: menu || echoes || reality || args.iter().any(|a| a == "--smoke-test"),
+            enabled: collapse
+                || menu
+                || echoes
+                || reality
+                || args.iter().any(|a| a == "--smoke-test"),
+            collapse,
             menu,
             reality,
             echoes,
@@ -209,7 +217,7 @@ pub fn drive(
     mut commands: Commands,
     exit: MessageWriter<AppExit>,
 ) {
-    if !smoke.enabled || smoke.reality || smoke.echoes || smoke.menu {
+    if !smoke.enabled || smoke.reality || smoke.echoes || smoke.menu || smoke.collapse {
         return;
     }
     smoke.frame += 1;

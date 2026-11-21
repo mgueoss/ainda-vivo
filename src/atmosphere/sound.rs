@@ -7,6 +7,7 @@ use crate::{
     app::{CollisionWorld, Comfort, LocalPlayer, MainCamera, Screen, Session},
     reality::{Developer, Threat},
 };
+use ainda_vivo_core::psychology::{Origin, Stimulus};
 use ainda_vivo_core::story::Phase;
 use bevy::{audio::AudioSinkPlayback, prelude::*};
 use std::{f32::consts::TAU, sync::Arc};
@@ -261,7 +262,7 @@ pub fn emit(
     mut session: ResMut<Session>,
     (scene, threat, mut director): (Res<Atmosphere>, Res<Threat>, ResMut<Director>),
     player: Res<LocalPlayer>,
-    bank: Res<SoundBank>,
+    (bank, effects): (Res<SoundBank>, Res<crate::psychology::Effects>),
     mut gait: Local<Gait>,
 ) {
     if (gait.attempt, gait.revision) != (session.attempt, session.perception_revision) {
@@ -273,10 +274,21 @@ pub fn emit(
     }
     let feet = player.body.feet;
     let previous = gait.previous.replace(feet).unwrap_or(feet);
-    if session.screen != Screen::Playing {
+    if session.screen != Screen::Playing || session.collapse_active() {
         return;
     }
     let now = session.elapsed;
+    if let Some(position) = effects.echo {
+        one_shot(
+            &mut commands,
+            &mut audio,
+            &session,
+            bank.trailing[1].clone(),
+            Sound::Trailing,
+            position,
+            0.85,
+        );
+    }
     if !threat.active()
         && !scene.episode.holding_silence()
         && session.progress().phase() >= Phase::Electrical
@@ -293,6 +305,7 @@ pub fn emit(
             step: 0,
         });
         session.memory_mut().heard_echo(now);
+        session.stimulate(Stimulus::Noise, Origin::External, 0.57);
         director.claim(Cue::Sound, now);
     }
     if let Some(echo) = &mut gait.echoed
@@ -336,6 +349,7 @@ pub fn emit(
         );
     }
     if scene.play_echo {
+        session.stimulate(Stimulus::Noise, Origin::External, 0.65);
         one_shot(
             &mut commands,
             &mut audio,
@@ -347,6 +361,7 @@ pub fn emit(
         );
     }
     if scene.episode.play_pump {
+        session.stimulate(Stimulus::Noise, Origin::External, 0.78);
         one_shot(
             &mut commands,
             &mut audio,
@@ -481,7 +496,7 @@ pub fn emit_incidents(
     mut commands: Commands,
     mut audio: ResMut<Assets<Voice>>,
     time: Res<Time>,
-    session: Res<Session>,
+    mut session: ResMut<Session>,
     atmosphere: Res<Atmosphere>,
     (presence, threat): (Res<Presence>, Res<Threat>),
     listener: Query<&Transform, With<MainCamera>>,
@@ -505,7 +520,7 @@ pub fn emit_incidents(
             ..default()
         };
     }
-    if session.screen != Screen::Playing {
+    if session.screen != Screen::Playing || session.collapse_active() {
         return;
     }
     if atmosphere.quiet > 0.14
@@ -567,6 +582,10 @@ pub fn emit_incidents(
     if director.allows(Cue::Sound, now)
         && let Some((kind, position)) = schedule.next(now, camera)
     {
+        let proximity = (1.0 - position.distance(camera.translation) / 18.0).clamp(0.0, 1.0);
+        if proximity >= 0.23 {
+            session.stimulate(Stimulus::Noise, Origin::External, proximity);
+        }
         one_shot(
             &mut commands,
             &mut audio,
@@ -596,7 +615,11 @@ type AudioEmitters<'w, 's> = Query<
 pub fn mix(
     mut commands: Commands,
     session: Res<Session>,
-    (scene, director): (Res<Atmosphere>, Res<Director>),
+    (scene, director, effects): (
+        Res<Atmosphere>,
+        Res<Director>,
+        Res<crate::psychology::Effects>,
+    ),
     comfort: Res<Comfort>,
     world: Res<CollisionWorld>,
     listener: Query<&Transform, With<MainCamera>>,
@@ -606,6 +629,8 @@ pub fn mix(
         return;
     };
     let playing = session.screen == Screen::Playing;
+    let (psychological_gain, psychological_muffle) =
+        crate::psychology::presentation::ambience_mix(&effects, &comfort);
     let volume = if comfort.ambience_muted {
         0.0
     } else {
@@ -636,6 +661,7 @@ pub fn mix(
             continue;
         }
         let gain = volume
+            * psychological_gain
             * match emitter.sound {
                 Sound::Room => {
                     0.48 * (1.0 - 0.76 * scene.quiet)
@@ -667,7 +693,7 @@ pub fn mix(
             };
         if matches!(emitter.sound, Sound::Room) {
             let centre = gain * std::f32::consts::FRAC_1_SQRT_2;
-            emitter.target.set(centre, centre, 0.0);
+            emitter.target.set(centre, centre, psychological_muffle);
             continue;
         }
         let mut source = transform.translation;
@@ -688,9 +714,15 @@ pub fn mix(
             *listener.right(),
             gain * if blocked { 0.55 } else { 1.0 },
         );
-        emitter
-            .target
-            .set(left, right, if blocked { 0.74 } else { 0.0 });
+        emitter.target.set(
+            left,
+            right,
+            if blocked {
+                0.74_f32.max(psychological_muffle)
+            } else {
+                psychological_muffle
+            },
+        );
     }
 }
 

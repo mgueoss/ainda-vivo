@@ -2,6 +2,7 @@ use ainda_vivo_core::{
     collision::Aabb,
     memory::{FieldMemory, ServiceTrail},
     movement::{PlayerBody, PlayerCommand},
+    psychology::{Origin, Psychology, Stimulus},
     reality::{Awakening, Expedition, Outcome, SafePoint},
     story::{Action, Progress},
 };
@@ -31,6 +32,10 @@ pub struct Session {
     pub message_left: f32,
     pub prompt: String,
     pub false_exit: Option<ExitPresentation>,
+    pub psychology: Psychology,
+    pub resting: bool,
+    pub farewell: Option<f32>,
+    pub critical_hint: bool,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -52,11 +57,30 @@ impl Default for Session {
             message_left: 0.0,
             prompt: String::new(),
             false_exit: None,
+            psychology: Psychology::default(),
+            resting: false,
+            farewell: None,
+            critical_hint: false,
         }
     }
 }
 
 impl Session {
+    pub fn collapse_active(&self) -> bool {
+        self.farewell.is_some()
+    }
+
+    pub fn collapse_finished(&self) -> bool {
+        self.collapse_active() && self.screen == Screen::Complete
+    }
+
+    pub fn stimulate(&mut self, stimulus: Stimulus, origin: Origin, strength: f32) {
+        if self.screen == Screen::Playing && !self.collapse_active() {
+            let key = (u64::from(self.elapsed.to_bits()) << 8) | stimulus as u64;
+            self.psychology.observe(key, stimulus, origin, strength);
+        }
+    }
+
     pub fn progress(&self) -> &Progress {
         self.expedition.view()
     }
@@ -70,6 +94,19 @@ impl Session {
     }
 
     pub fn act(&mut self, action: Action) {
+        if self.collapse_active() {
+            return;
+        }
+        if action == Action::RestAtPost {
+            self.resting = true;
+            let found = self.psychology.grant_reserve();
+            self.say(if found {
+                "Posto de pausa. Descanse sob a luz. Reserva de foco disponível com [R]."
+            } else {
+                "Posto de pausa. Permaneça aqui para recuperar o fôlego."
+            });
+            return;
+        }
         let mut message = self
             .expedition
             .act(action, crate::scene::station::RETURN_POST);
@@ -130,6 +167,7 @@ impl Session {
         if matches!(self.false_exit, Some(ExitPresentation::Receipt { reveal_at }) if self.elapsed >= reveal_at)
         {
             self.false_exit = Some(ExitPresentation::Contradiction);
+            self.stimulate(Stimulus::Hallucination, Origin::Presence, 0.66);
             let message = if self.memory().service == ServiceTrail::Reconciled {
                 "Portaria, 03:17. A baixa foi emitida antes da entrada. A via de Borges continua em serviço."
             } else {
@@ -147,12 +185,13 @@ impl Session {
 }
 
 pub fn awaken(session: &mut Session, player: &mut LocalPlayer) {
-    if session.screen != Screen::Paused || !session.wake_confirmation {
+    if session.screen != Screen::Paused || !session.wake_confirmation || session.collapse_active() {
         return;
     }
     session.wake_confirmation = false;
     match session.expedition.awaken() {
         Awakening::Recovered(post) => {
+            session.resting = false;
             *player = player_at_post(post);
             session.screen = Screen::Playing;
             session.perception_revision += 1;
@@ -209,6 +248,9 @@ pub struct Comfort {
     pub ambience_volume: f32,
     pub ambience_muted: bool,
     pub vhs: crate::vhs::VhsMode,
+    pub psycho_av: f32,
+    pub psycho_motion: bool,
+    pub psycho_indicator: bool,
 }
 
 impl Default for Comfort {
@@ -223,6 +265,9 @@ impl Default for Comfort {
             ambience_volume: 0.65,
             ambience_muted: false,
             vhs: crate::vhs::VhsMode::Soft,
+            psycho_av: 1.0,
+            psycho_motion: true,
+            psycho_indicator: false,
         }
     }
 }
@@ -328,6 +373,9 @@ pub fn run() -> bevy::app::AppExit {
         .init_resource::<crate::smoke::continuity::ContinuitySmoke>()
         .init_resource::<crate::smoke::echoes::EchoSmoke>()
         .init_resource::<crate::ui::Menu>()
+        .init_resource::<crate::psychology::Effects>()
+        .init_resource::<crate::psychology::ForceCue>()
+        .init_resource::<crate::smoke::collapse::Check>()
         .add_plugins(DefaultPlugins.set(WindowPlugin {
             primary_window: Some(Window {
                 title: format!("AINDA VIVO | v{VERSION}"),
@@ -356,7 +404,18 @@ pub fn run() -> bevy::app::AppExit {
                 crate::scene::water::setup,
                 crate::ui::setup,
                 crate::atmosphere::sound::setup,
+                crate::scene::station::setup_rest_posts,
+                crate::psychology::presentation::setup,
             ),
+        )
+        .add_systems(
+            PreUpdate,
+            (
+                crate::smoke::collapse::inject_reserve,
+                crate::psychology::reserve,
+            )
+                .chain()
+                .after(bevy::input::InputSystems),
         )
         .add_systems(FixedUpdate, crate::desktop::simulate)
         .add_systems(
@@ -368,9 +427,18 @@ pub fn run() -> bevy::app::AppExit {
                     crate::smoke::drive,
                     crate::smoke::continuity::drive,
                     crate::smoke::echoes::drive,
+                    crate::smoke::collapse::drive,
                 )
                     .chain(),
-                crate::desktop::update_camera,
+                (
+                    crate::psychology::input,
+                    crate::desktop::update_camera,
+                    crate::psychology::perception,
+                    crate::psychology::presentation::update,
+                    crate::psychology::presentation::update_figure,
+                    crate::psychology::presentation::update_audio,
+                )
+                    .chain(),
                 crate::vhs::update,
                 crate::interaction::interact,
                 crate::scene::sync_scene,

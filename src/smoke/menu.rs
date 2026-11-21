@@ -51,9 +51,9 @@ pub fn drive(
 
     let key = match route.frame {
         26 => Some(KeyCode::ArrowDown),
-        31 | 48 | 54 | 68 | 154 | 174 => Some(KeyCode::Enter),
-        52 | 66 => Some(KeyCode::Tab),
-        62 | 85 | 130 | 159 | 166 => Some(KeyCode::Escape),
+        31 | 48 | 54 | 68 | 154 | 174 | 184 | 189 => Some(KeyCode::Enter),
+        52 | 66 | 187 => Some(KeyCode::Tab),
+        62 | 85 | 130 | 159 | 166 | 178 | 221 | 224 | 228 => Some(KeyCode::Escape),
         _ => None,
     };
     if let Some(key) = key {
@@ -65,6 +65,10 @@ pub fn drive(
         120 => Some(MenuAction::Main),
         150 | 168 => Some(MenuAction::Wake),
         170 => Some(MenuAction::ConfirmWake),
+        180 => Some(MenuAction::Settings),
+        182 => Some(MenuAction::Accessibility),
+        191 => Some(MenuAction::CrisisCamera),
+        193 => Some(MenuAction::StabilityIndicator),
         _ => None,
     };
     if let Some(click) = click
@@ -83,6 +87,10 @@ pub fn drive(
                     .single()
                     .is_ok_and(|layers| *layers == RenderLayers::none()),
             "abertura_isolou_a_cena_3d_e_focou_jogar",
+        )),
+        28 => Some((
+            !comfort.psycho_indicator && comfort.psycho_motion && comfort.psycho_av == 1.0,
+            "acessibilidade_com_indicador_oculto_por_padrao",
         )),
         27 => Some((menu.focus == MenuAction::Settings, "seta_moveu_foco")),
         32 => Some((menu.page == MenuPage::Settings, "confirmou_configuracoes")),
@@ -139,6 +147,36 @@ pub fn drive(
                 && player.body.feet.distance(RETURN_POST.feet) < 0.04,
             "enter_retomou_do_posto",
         )),
+        183 => Some((
+            session.screen == Screen::Paused
+                && menu.page == MenuPage::Accessibility
+                && menu.focus == MenuAction::PsychologicalEffectsDown,
+            "abriu_acessibilidade_da_pausa",
+        )),
+        185 => Some(((comfort.psycho_av - 0.75).abs() < 0.01, "reduziu_efeitos")),
+        195 => Some((
+            comfort.psycho_indicator && !comfort.psycho_motion && comfort.psycho_av == 1.0,
+            "restaurou_efeitos_e_alternou_camera_e_indicador",
+        )),
+        218 => Some((
+            menu.page == MenuPage::Accessibility
+                && window
+                    .single()
+                    .is_ok_and(|window| window.width() <= 641.0 && window.height() <= 481.0),
+            "acessibilidade_na_janela_compacta",
+        )),
+        222 => Some((
+            menu.page == MenuPage::Settings && menu.focus == MenuAction::Accessibility,
+            "acessibilidade_retornou_as_configuracoes",
+        )),
+        225 => Some((
+            menu.page == MenuPage::Home && session.screen == Screen::Paused,
+            "voltar_das_configuracoes_preservou_pausa",
+        )),
+        229 => Some((
+            session.screen == Screen::Playing,
+            "retomada_apos_acessibilidade",
+        )),
         _ => None,
     };
     if let Some((false, failure)) = check {
@@ -150,9 +188,9 @@ pub fn drive(
         25 => smoke.capture(&mut commands, "01-tela-inicial"),
         45 => smoke.capture(&mut commands, "02-configuracoes"),
         81 => smoke.capture(&mut commands, "03-controles"),
-        88 | 106 => {
+        88 | 106 | 200 => {
             if let Ok(mut window) = window.single_mut() {
-                let (width, height) = if route.frame == 88 {
+                let (width, height) = if route.frame == 88 || route.frame == 200 {
                     (640.0, 480.0)
                 } else {
                     (1280.0, 720.0)
@@ -167,12 +205,13 @@ pub fn drive(
                 session.act(action);
             }
         }
-        190 => {
-            if smoke.capture_dir.is_some() && smoke.captures != 5 {
+        218 => smoke.capture(&mut commands, "06-acessibilidade-compacta"),
+        245 => {
+            if smoke.capture_dir.is_some() && smoke.captures != 6 {
                 smoke.failures.push("capturas_incompletas");
             }
             let report = format!(
-                "AINDA VIVO v{VERSION}\nsmoke-menu: {}\nchecks: focus and keyboard navigation, pointer actions, FOV and volume, controls screen, 1280x720 and 640x480, play, pause, neutral awakening confirmation, one post resume\ncaptures: {}\nfailures: {:?}\n",
+                "AINDA VIVO v{VERSION}\nsmoke-menu: {}\nchecks: focus and keyboard navigation, pointer actions, FOV and volume, controls screen, 1280x720 and 640x480, play, pause, neutral awakening confirmation, one post resume, compact accessibility, effects, camera and default-hidden indicator\ncaptures: {}\nfailures: {:?}\n",
                 if smoke.failures.is_empty() {
                     "PASS"
                 } else {

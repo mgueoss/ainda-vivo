@@ -92,6 +92,7 @@ pub(in crate::ui) fn spawn(
                 children![
                     home(style),
                     settings(style),
+                    accessibility(style),
                     controls(style, bindings),
                     confirmation(style)
                 ],
@@ -279,6 +280,59 @@ fn settings(style: &UiStyle) -> impl Bundle + use<> {
                     toggle(style, "Som do ambiente", Label::Mute, Action::Mute),
                 ],
             ),
+            (
+                Node {
+                    column_gap: px(8),
+                    ..default()
+                },
+                children![
+                    (
+                        column(215.0, 0.0),
+                        children![row(style, Action::Accessibility, "Acessibilidade", "›")],
+                    ),
+                    back(style),
+                ],
+            ),
+        ],
+    )
+}
+
+fn accessibility(style: &UiStyle) -> impl Bundle + use<> {
+    (
+        Region::Accessibility,
+        Node {
+            position_type: PositionType::Absolute,
+            left: SIDE,
+            top: percent(17),
+            max_width: percent(86.2),
+            ..column(500.0, 16.0)
+        },
+        children![
+            page_heading(style, "Acessibilidade"),
+            style.body(
+                "A expedição inclui pânico, alterações sensoriais e colapso sobrenatural.",
+                16.0,
+                MUTED,
+            ),
+            (
+                column(500.0, 0.0),
+                children![
+                    stepper(
+                        style,
+                        "Intensidade audiovisual",
+                        Label::PsychologicalEffects,
+                        Action::PsychologicalEffectsDown,
+                        Action::PsychologicalEffectsUp,
+                    ),
+                    toggle(style, "Câmera nas crises", Label::CrisisCamera, Action::CrisisCamera),
+                    toggle(style, "Indicador de estabilidade", Label::StabilityIndicator, Action::StabilityIndicator),
+                ],
+            ),
+            style.body(
+                "Procure um posto iluminado e fique parado para descansar. Use R para ativar a reserva, quando disponível.",
+                16.0,
+                INK,
+            ),
             back(style),
         ],
     )
@@ -460,6 +514,7 @@ fn controls(style: &UiStyle, bindings: &Preferences) -> impl Bundle + use<> {
                     control_line(style, "Pular", &key("jump", KeyCode::Space)),
                     control_line(style, "Interagir", &key("interact", KeyCode::KeyE)),
                     control_line(style, "Lanterna", &key("flashlight", KeyCode::KeyF)),
+                    control_line(style, "Usar reserva de foco", "R"),
                     control_line(style, "Pausar", "Esc"),
                     control_line(style, "Diagnóstico", "F3"),
                     control_line(style, "Alternar VHS", "F4"),
@@ -486,7 +541,7 @@ fn key_name(key: KeyCode) -> String {
 fn control_line(style: &UiStyle, name: &str, key: &str) -> impl Bundle + use<> {
     (
         Node {
-            min_height: px(33),
+            min_height: px(31),
             padding: UiRect::vertical(px(4)),
             ..setting_line()
         },

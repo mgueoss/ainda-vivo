@@ -2,7 +2,7 @@
 
 ## Jogar
 
-A v0.0.10 — Ecos do Desaparecimento é a versão recomendada para testes. As versões históricas continuam disponíveis no GitHub. [Release v0.0.10](https://github.com/mgueoss/ainda-vivo/releases/tag/v0.0.10) · [Demais releases](https://github.com/mgueoss/ainda-vivo/releases)
+A v0.0.11 — Colapso é a versão recomendada para testes. [Release v0.0.11](https://github.com/mgueoss/ainda-vivo/releases/tag/v0.0.11) · [Demais releases](https://github.com/mgueoss/ainda-vivo/releases)
 
 Baixe o arquivo `ainda-vivo-vVERSÃO-windows-x64.zip`, extraia o ZIP inteiro e abra **AINDA-VIVO.exe**. O botão **JOGAR** fica disponível após a verificação. A preparação usa o Windows local e o driver de vídeo. Quando falta o Visual C++ x64, o próprio inicializador oferece a instalação oficial da Microsoft. Se o runtime e o driver já estiverem disponíveis, a preparação e o jogo funcionam offline.
 

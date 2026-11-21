@@ -44,6 +44,87 @@ pub(crate) fn lamp_refuge(desk_light: bool, feet: Vec3) -> bool {
     desk_light && feet.xz().distance_squared(SERVICE_ORDER.xz()) < 3.65 * 3.65
 }
 
+pub(crate) const REST_POSTS: [Vec3; 5] = [
+    Vec3::new(0.63, 2.38, -7.8),
+    Vec3::new(-5.1, 2.38, -41.3),
+    Vec3::new(-22.2, 2.38, -52.6),
+    Vec3::new(32.45, 2.38, -57.1),
+    Vec3::new(7.75, 2.38, -78.6),
+];
+
+pub(crate) fn near_rest_post(feet: Vec3) -> bool {
+    feet.y.abs() < 0.45
+        && REST_POSTS
+            .iter()
+            .any(|post| post.xz().distance_squared(feet.xz()) < 4.2 * 4.2)
+}
+
+pub fn setup_rest_posts(
+    mut commands: Commands,
+    mut images: ResMut<Assets<Image>>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    use crate::interaction::Interactable;
+    use ainda_vivo_core::{collision::Aabb, story::Action};
+    let sign = materials.add(StandardMaterial {
+        base_color_texture: Some(images.add(surfaces::sign(
+            "POSTO DE PAUSA",
+            [54, 33, 23],
+            [241, 181, 112],
+        ))),
+        unlit: true,
+        ..default()
+    });
+    let plate = meshes.add(Rectangle::new(1.08, 0.22));
+    let enclosure = meshes.add(Cuboid::new(1.12, 0.27, 0.09));
+    let unit = meshes.add(Cuboid::new(1.0, 1.0, 1.0));
+    let mount = materials.add(Color::srgb(0.14, 0.13, 0.10));
+    for point in REST_POSTS {
+        commands.spawn((
+            Name::new("Posto de pausa"),
+            Mesh3d(enclosure.clone()),
+            MeshMaterial3d(mount.clone()),
+            Transform::from_translation(point),
+            NotShadowCaster,
+            Interactable {
+                bounds: Aabb::from_center_size(point, Vec3::new(1.12, 0.27, 0.17)),
+                action: Action::RestAtPost,
+            },
+        ));
+        for (distance, rotation) in [(0.049, 0.0), (-0.049, std::f32::consts::PI)] {
+            commands.spawn((
+                Mesh3d(plate.clone()),
+                MeshMaterial3d(sign.clone()),
+                Transform::from_translation(point + Vec3::Z * distance)
+                    .with_rotation(Quat::from_rotation_y(rotation)),
+                NotShadowCaster,
+            ));
+        }
+        if let Some(room) = ROOMS.iter().find(|room| room.contains(point.xz())) {
+            let span = (room.height - point.y - 0.12).max(0.16);
+            for x in [-0.35, 0.35] {
+                commands.spawn((
+                    Mesh3d(unit.clone()),
+                    MeshMaterial3d(mount.clone()),
+                    Transform::from_translation(point + Vec3::new(x, 0.12 + span * 0.5, 0.0))
+                        .with_scale(Vec3::new(0.033, span, 0.034)),
+                    NotShadowCaster,
+                ));
+            }
+        }
+        commands.spawn((
+            PointLight {
+                color: Color::srgb(0.98, 0.66, 0.37),
+                intensity: 1900.0,
+                range: 4.8,
+                ..default()
+            },
+            Transform::from_translation(point - Vec3::Y * 0.12),
+        ));
+    }
+}
+
 pub fn reached_exit(feet: Vec3) -> bool {
     (get(Sector::Exit).min.y..plan::EXIT_THRESHOLD).contains(&feet.z) && feet.x.abs() < 3.0
 }
