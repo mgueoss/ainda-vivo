@@ -1,0 +1,17 @@
+AINDA VIVO v0.0.12-dev.2
+render/integration smoke: PASS
+frames: 12260
+map audit: 15 sectors, 22 bidirectional portals
+presence: 10 valid sightlines, 4 distinct framed sites on the main route, walkway crossing: true, offscreen disappearance: true
+director (first attempt): cues [presence, sound, illusion] [5, 2, 1], expired empty windows 5, protected or contextual deferrals 9, sector revisits 5, mood bit mask 111111
+checks: workshop cue, collision and pause, fuse, first pump reading, outside-wall ray, rearm, locked gate, pressure needle, second reading, full walking route, exit, optional monitor, restart, direct-gaze hold and close flashlight
+basin ripple: true
+Control shift log: true
+observer-local prop shifted: true, restored on restart: true
+audio device checked: true
+distinct incidental sounds: 3
+inspection and basin sounds played: 2 of 2
+BMP captures: 0
+failures: []
+Archive occurrence read: true
+Control false indicator applied: true

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.0.12-dev.2 — Movimentos Antinaturais
+
+- Ações da Presença no mesmo rig e na mesma malha da dev.1. Incluem vigília, passadas humanoides, três rupturas, dois ritmos de corrida quadrúpede, frenagem, retomada da postura em pé e uma despedida lenta.
+- Reprodução Bevy por estados, com mistura de poses, apoios e marcadores para sincronização futura. O Lab permite inspecionar a linha do tempo, comparar clipes e ajustar reprodução e deslocamento separadamente.
+- Pista com curvas e aproximação encenada em primeira pessoa no Dev Lab. O controle da criatura nessa cena é independente da campanha. [Dev Lab](docs/DEV-LAB.md) · [Handoff](AINDA-VIVO-HANDOFF-v0.0.12-dev.2.md)
+
 ## v0.0.12-dev.1 — A Presença e Dev Lab
 
 - Primeira malha original da Presença, esculpida em Blender. O arquivo editável inclui rig, pesos, texturas PBR e poses de inspeção, entre elas o apoio quadrúpede e a despedida.

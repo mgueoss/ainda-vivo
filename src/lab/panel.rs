@@ -1,6 +1,7 @@
 use super::{
     Action, Knob, Lab, Options, ctrl,
     library::{self, Catalog},
+    motion::{self, Mode},
     settings::{Category, Config, Lighting, MAX_INSTANCES, Model, Preset, Tab},
 };
 use bevy::{
@@ -26,6 +27,12 @@ pub(super) struct Interface;
 pub(super) struct ScrollArea;
 #[derive(Component)]
 pub(super) struct UsesClipList;
+#[derive(Component)]
+pub(super) struct TimelineRail;
+#[derive(Component)]
+pub(super) struct TimelineFill;
+#[derive(Component)]
+pub(super) struct TimelineMarks;
 #[derive(Component)]
 pub(super) struct Trigger(Action);
 #[derive(Component)]
@@ -202,7 +209,7 @@ fn inspector(side: &mut ChildSpawnerCommands) {
     row(side).with_children(|line| {
         button(line, "Objeto", Action::SetTab(Tab::Object));
         button(line, "Luz", Action::SetTab(Tab::Lighting));
-        button(line, "Poses", Action::SetTab(Tab::Animation));
+        button(line, "Animação", Action::SetTab(Tab::Animation));
         button(line, "Ajuda", Action::SetTab(Tab::Help));
     });
     scroll(side).with_children(|list| {
@@ -263,27 +270,38 @@ fn inspector(side: &mut ChildSpawnerCommands) {
             });
         });
         group(list, Tab::Animation).with_children(|view| {
-            section(view, "POSES E CLIPES DO GLB");
-            view.spawn((column(3), UsesClipList));
-            row(view).with_children(|line| {
-                button(line, "Ossos", Action::Skeleton);
-                button(line, "Wireframe", Action::Wireframe);
-            });
-            section(view, "REPRODUÇÃO");
             row(view).with_children(|line| {
                 button(line, "Reproduzir", Action::Play);
                 button(line, "Reiniciar", Action::Rewind);
                 button(line, "Loop", Action::Repeat);
             });
-            adjust(view, "Velocidade", Knob::Playback, 0.25);
-            view.spawn((text("", 13.0, ACCENT), Label::Timeline));
+            view.spawn((text("", 12.0, ACCENT), Label::Timeline));
+            timeline_rail(view);
             row(view).with_children(|line| {
-                button(line, "−0,1 s", Action::Seek(-0.10));
-                for frame in [0., 0.25, 0.5, 0.75, 1.] {
-                    button(line, &format!("{:.0}", frame * 100.0), Action::SeekFraction(frame));
-                }
-                button(line, "+0,1 s", Action::Seek(0.10));
+                button(line, "−1 quadro", Action::Step(-1));
+                button(line, "+1 quadro", Action::Step(1));
             });
+            adjust(view, "Velocidade do clipe", Knob::Playback, 0.1);
+            row(view).with_children(|line| {
+                button(line, "Ossos", Action::Skeleton);
+                button(line, "Apoios", Action::Contacts);
+                button(line, "Wireframe", Action::Wireframe);
+            });
+            row(view).with_children(|line| {
+                button(line, "Deslocar", Action::Displace);
+                button(line, "Comparar A/B", Action::CompareClips);
+            });
+            button(view, "Olhar para o operador", Action::FollowGaze);
+            adjust(view, "Deslocamento", Knob::Displacement, 0.1);
+            section(view, "TESTES");
+            row(view).with_children(|line| {
+                button(line, "Sequência", Action::MotionDemo(Mode::Sequence));
+                button(line, "Pista", Action::MotionDemo(Mode::Track));
+                button(line, "Aproximação", Action::MotionDemo(Mode::Approach));
+            });
+            button(view, "Encerrar demonstração", Action::StopDemo);
+            section(view, "CLIPES DO MODELO");
+            view.spawn((column(3), UsesClipList));
         });
         group(list, Tab::Help).with_children(|view| {
             section(view, "ATALHOS");
@@ -434,6 +452,104 @@ fn adjust(parent: &mut ChildSpawnerCommands, name: &str, knob: Knob, delta: f32)
     });
 }
 
+fn timeline_rail(parent: &mut ChildSpawnerCommands) {
+    parent
+        .spawn((
+            Button,
+            RelativeCursorPosition::default(),
+            TimelineRail,
+            TimelineMarks,
+            Node {
+                width: percent(100),
+                height: px(15),
+                flex_shrink: 0.0,
+                ..default()
+            },
+            BackgroundColor(BASE),
+        ))
+        .with_children(|rail| {
+            rail.spawn((
+                TimelineFill,
+                Node {
+                    position_type: PositionType::Absolute,
+                    height: percent(100),
+                    width: percent(0),
+                    ..default()
+                },
+                BackgroundColor(Color::srgb(0.26, 0.46, 0.39)),
+                FocusPolicy::Pass,
+            ));
+        });
+}
+
+pub(super) fn timeline_display(
+    mut commands: Commands,
+    config: Res<Config>,
+    catalog: Res<Catalog>,
+    animation: PlaybackQueries,
+    mut nodes: TimelineNodes,
+    mut previous: Local<Option<(Entity, u32, Option<usize>)>>,
+) {
+    let position = library::timeline(
+        config.selected,
+        &catalog,
+        &animation.players,
+        &animation.viewers,
+    );
+    if let Ok(mut node) = nodes.fill.single_mut() {
+        let progress = position.map_or(0.0, |(_, time, duration)| motion::phase(time, duration));
+        let width = percent(progress * 100.0);
+        if node.width != width {
+            node.width = width;
+        }
+    }
+    if let Ok((rail, children)) = nodes.rail.single() {
+        let tag = (rail, catalog.revision(), position.map(|(index, ..)| index));
+        if *previous == Some(tag) {
+            return;
+        }
+        *previous = Some(tag);
+        for child in children.iter().filter(|&child| nodes.marks.contains(child)) {
+            commands.entity(child).despawn();
+        }
+        if let Some(clip) = tag.2.and_then(|index| catalog.clips().get(index)) {
+            commands.entity(rail).with_children(|strip| {
+                for phase in clip.motion.marks() {
+                    strip.spawn((
+                        TimeMark,
+                        Node {
+                            position_type: PositionType::Absolute,
+                            left: percent(phase * 100.0),
+                            top: px(3),
+                            height: px(9),
+                            width: px(1.5),
+                            ..default()
+                        },
+                        BackgroundColor(ACCENT),
+                        FocusPolicy::Pass,
+                    ));
+                }
+            });
+        }
+    }
+}
+
+#[derive(Component)]
+pub(super) struct TimeMark;
+
+#[derive(bevy::ecs::system::SystemParam)]
+pub(super) struct TimelineNodes<'w, 's> {
+    fill: Query<'w, 's, &'static mut Node, With<TimelineFill>>,
+    rail: Query<'w, 's, (Entity, &'static Children), With<TimelineMarks>>,
+    marks: Query<'w, 's, (), With<TimeMark>>,
+}
+
+#[derive(bevy::ecs::system::SystemParam)]
+pub(super) struct PlaybackQueries<'w, 's> {
+    players: Query<'w, 's, (&'static AnimationPlayer, &'static library::Player)>,
+    viewers: Query<'w, 's, &'static library::Viewer>,
+}
+
 #[allow(
     clippy::too_many_arguments,
     reason = "Independent Bevy input channels and UI queries."
@@ -448,6 +564,7 @@ pub(super) fn input(
     mut scrollers: Query<(&RelativeCursorPosition, &mut ScrollPosition), With<ScrollArea>>,
     mut queue: MessageWriter<Action>,
     options: Res<Options>,
+    rail: Query<(&Interaction, &RelativeCursorPosition), With<TimelineRail>>,
 ) {
     if options.smoke {
         return;
@@ -461,6 +578,11 @@ pub(super) fn input(
         }
     }
     if can_click {
+        if let Ok((Interaction::Pressed, cursor)) = rail.single()
+            && let Some(position) = cursor.normalized
+        {
+            queue.write(Action::SeekFraction(position.x + 0.5));
+        }
         for (hit, command) in &clicks {
             if *hit == Interaction::Pressed {
                 lab.search_focus = command.0 == Action::Search;
@@ -572,10 +694,21 @@ pub(super) fn refresh(
             Action::SetTab(tab) => config.tab == tab,
             Action::Select(index) => config.selected == index,
             Action::Preset(which) => config.lighting.preset == which,
-            Action::Clip(i) => selected.is_some_and(|spec| spec.clip == i),
+            Action::Clip(i) => active.playback.run.as_ref().map_or_else(
+                || selected.is_some_and(|spec| spec.clip == i),
+                |run| catalog.number(run.current().0) == Some(i),
+            ),
             Action::Search => lab.search_focus,
             Action::Grid => config.grid,
             Action::Skeleton => config.skeleton,
+            Action::Contacts => active.playback.contacts,
+            Action::Displace => active.playback.displacement,
+            Action::FollowGaze => active.playback.follow_gaze,
+            Action::MotionDemo(mode) => active
+                .playback
+                .run
+                .as_ref()
+                .is_some_and(|run| run.mode == mode),
             Action::Wireframe => config.wireframe,
             Action::Play => active.playback.running,
             Action::Repeat => active.playback.repeat,
@@ -622,7 +755,7 @@ pub(super) fn refresh(
             Label::Instance(i) => config.instances.get(*i).map_or(String::new(), |s| {
                 format!("{:02}  {}", i + 1, s.model.name())
             }),
-            Label::Measure(knob) => measure(*knob, &config, active.playback.speed),
+            Label::Measure(knob) => measure(*knob, &config, &active.playback),
             Label::Technical => {
                 let sample = |id: &bevy::diagnostic::DiagnosticPath| {
                     metrics
@@ -668,13 +801,28 @@ pub(super) fn refresh(
                     header
                 }
             }
-            Label::Timeline => {
-                library::timeline(config.selected, &catalog, &animation.0, &animation.1)
-                    .map_or_else(
-                        || "Linha do tempo indisponível".into(),
-                        |(time, total)| format!("{time:.2} / {total:.2} s"),
+            Label::Timeline => library::timeline(
+                config.selected,
+                &catalog,
+                &animation.0,
+                &animation.1,
+            )
+            .map_or_else(
+                || "Linha do tempo indisponível".into(),
+                |(index, time, total)| {
+                    let clip = &catalog.clips()[index];
+                    let event = active
+                        .playback
+                        .last_event
+                        .map_or("—", motion::EventKind::label);
+                    format!(
+                        "{}\n{} · {time:.2} / {total:.2} s · quadro {}\nÚltimo evento · {event}",
+                        clip.label,
+                        clip.motion.state.label(),
+                        (time * clip.motion.fps).round() as u32,
                     )
-            }
+                },
+            ),
             Label::Button(action) => match action {
                 Action::CaptureCursor => if active.captured {
                     "Tab ou Esc para liberar"
@@ -723,7 +871,7 @@ pub(super) fn refresh(
     }
 }
 
-fn measure(knob: Knob, config: &Config, playback: f32) -> String {
+fn measure(knob: Knob, config: &Config, playback: &super::Playback) -> String {
     let selected = config.selected();
     match knob {
         Knob::Translation(axis) => {
@@ -740,6 +888,7 @@ fn measure(knob: Knob, config: &Config, playback: f32) -> String {
         Knob::Exposure => format!("{:.1} EV", config.lighting.exposure),
         Knob::Fov => format!("{:.0}°", config.lens.fov),
         Knob::Speed => format!("{:.1} m/s", config.lens.speed),
-        Knob::Playback => format!("{playback:.2}×"),
+        Knob::Playback => format!("{:.1}×", playback.speed),
+        Knob::Displacement => format!("{:.1}×", playback.speed_scale),
     }
 }

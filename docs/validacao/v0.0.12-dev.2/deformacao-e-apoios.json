@@ -1,0 +1,1154 @@
+{
+  "blender": "4.5.16 LTS",
+  "mesma_malha_rig_pesos_do_original": true,
+  "frequência_de_amostragem_hz": 60,
+  "clipes": [
+    {
+      "clipe": "08 - Respiração discreta",
+      "amostras": 277,
+      "mínimo_mm": 1.26,
+      "quadro_mínimo": 0.0,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.009,
+      "alongamento_máximo": 1.036,
+      "apoios": []
+    },
+    {
+      "clipe": "09 - Observação prolongada",
+      "amostras": 481,
+      "mínimo_mm": 1.26,
+      "quadro_mínimo": 0.0,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.009,
+      "alongamento_máximo": 1.057,
+      "apoios": []
+    },
+    {
+      "clipe": "10 - Inclinação lenta",
+      "amostras": 211,
+      "mínimo_mm": 1.26,
+      "quadro_mínimo": 0.0,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.03,
+      "alongamento_máximo": 1.188,
+      "apoios": []
+    },
+    {
+      "clipe": "11 - A cabeça gira primeiro",
+      "amostras": 205,
+      "mínimo_mm": 1.26,
+      "quadro_mínimo": 0.0,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.082,
+      "alongamento_máximo": 1.405,
+      "apoios": []
+    },
+    {
+      "clipe": "12 - Acompanhamento visual",
+      "amostras": 313,
+      "mínimo_mm": 1.26,
+      "quadro_mínimo": 0.0,
+      "altura_máxima_m": 2.198,
+      "alongamento_p99_pior_quadro": 1.031,
+      "alongamento_máximo": 1.19,
+      "apoios": []
+    },
+    {
+      "clipe": "13 - Caminhada lenta",
+      "amostras": 103,
+      "mínimo_mm": 1.2,
+      "quadro_mínimo": 1.5,
+      "altura_máxima_m": 2.154,
+      "alongamento_p99_pior_quadro": 1.137,
+      "alongamento_máximo": 2.023,
+      "apoios": [
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.17,
+          "mínimo_mm": 1.46,
+          "máximo_mm": 1.58,
+          "deslize_mm": 0.42
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.67,
+          "mínimo_mm": 1.2,
+          "máximo_mm": 1.26,
+          "deslize_mm": 0.02
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.5,
+          "fim": 1,
+          "mínimo_mm": 1.37,
+          "máximo_mm": 1.66,
+          "deslize_mm": 0.95
+        }
+      ]
+    },
+    {
+      "clipe": "14 - Caminhada acelerada",
+      "amostras": 67,
+      "mínimo_mm": -0.86,
+      "quadro_mínimo": 17.5,
+      "altura_máxima_m": 2.131,
+      "alongamento_p99_pior_quadro": 1.171,
+      "alongamento_máximo": 2.355,
+      "apoios": [
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.1,
+          "mínimo_mm": 1.19,
+          "máximo_mm": 1.5,
+          "deslize_mm": 0.04
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.6,
+          "mínimo_mm": 0.56,
+          "máximo_mm": 1.26,
+          "deslize_mm": 0.31
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.5,
+          "fim": 1,
+          "mínimo_mm": -0.86,
+          "máximo_mm": 8.17,
+          "deslize_mm": 6.03
+        }
+      ]
+    },
+    {
+      "clipe": "15 - Caminhada lateral",
+      "amostras": 85,
+      "mínimo_mm": 1.19,
+      "quadro_mínimo": 2.5,
+      "altura_máxima_m": 2.154,
+      "alongamento_p99_pior_quadro": 1.146,
+      "alongamento_máximo": 1.884,
+      "apoios": [
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.19,
+          "mínimo_mm": 1.47,
+          "máximo_mm": 1.5,
+          "deslize_mm": 0.01
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.69,
+          "mínimo_mm": 1.19,
+          "máximo_mm": 1.26,
+          "deslize_mm": 0.02
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.5,
+          "fim": 1,
+          "mínimo_mm": 1.46,
+          "máximo_mm": 1.5,
+          "deslize_mm": 0.02
+        }
+      ]
+    },
+    {
+      "clipe": "16 - Rotação corporal",
+      "amostras": 139,
+      "mínimo_mm": 1.23,
+      "quadro_mínimo": 49.5,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.194,
+      "alongamento_máximo": 2.687,
+      "apoios": []
+    },
+    {
+      "clipe": "17 - Espiada pelo vão",
+      "amostras": 229,
+      "mínimo_mm": 1.25,
+      "quadro_mínimo": 102.5,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.259,
+      "alongamento_máximo": 2.912,
+      "apoios": []
+    },
+    {
+      "clipe": "18 - Recuo humanoide",
+      "amostras": 91,
+      "mínimo_mm": 1.15,
+      "quadro_mínimo": 0.5,
+      "altura_máxima_m": 2.155,
+      "alongamento_p99_pior_quadro": 1.139,
+      "alongamento_máximo": 2.057,
+      "apoios": [
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.22,
+          "mínimo_mm": 1.46,
+          "máximo_mm": 1.5,
+          "deslize_mm": 0.06
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.72,
+          "mínimo_mm": 1.15,
+          "máximo_mm": 1.26,
+          "deslize_mm": 0.05
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.5,
+          "fim": 1,
+          "mínimo_mm": 1.42,
+          "máximo_mm": 1.89,
+          "deslize_mm": 1.46
+        }
+      ]
+    },
+    {
+      "clipe": "19 - Aproximação cautelosa",
+      "amostras": 121,
+      "mínimo_mm": 1.23,
+      "quadro_mínimo": 23.5,
+      "altura_máxima_m": 2.158,
+      "alongamento_p99_pior_quadro": 1.15,
+      "alongamento_máximo": 2.113,
+      "apoios": [
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.14,
+          "mínimo_mm": 1.48,
+          "máximo_mm": 1.5,
+          "deslize_mm": 0.01
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.62,
+          "mínimo_mm": 1.23,
+          "máximo_mm": 1.26,
+          "deslize_mm": 0.02
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.38,
+          "fim": 1,
+          "mínimo_mm": 1.46,
+          "máximo_mm": 1.5,
+          "deslize_mm": 0.01
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0.86,
+          "fim": 1,
+          "mínimo_mm": 1.24,
+          "máximo_mm": 1.26,
+          "deslize_mm": 0.01
+        }
+      ]
+    },
+    {
+      "clipe": "20 - Sentar",
+      "amostras": 169,
+      "mínimo_mm": 1.2,
+      "quadro_mínimo": 55.5,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.41,
+      "alongamento_máximo": 3.404,
+      "apoios": []
+    },
+    {
+      "clipe": "21 - Levantar",
+      "amostras": 127,
+      "mínimo_mm": 1.14,
+      "quadro_mínimo": 21.5,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.41,
+      "alongamento_máximo": 3.404,
+      "apoios": []
+    },
+    {
+      "clipe": "22 - Ruptura lenta",
+      "amostras": 283,
+      "mínimo_mm": 1.24,
+      "quadro_mínimo": 41.5,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.75,
+      "alongamento_máximo": 4.41,
+      "apoios": [
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.63,
+          "mínimo_mm": 1.24,
+          "máximo_mm": 1.26,
+          "deslize_mm": 0.05
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.77,
+          "mínimo_mm": 1.47,
+          "máximo_mm": 1.5,
+          "deslize_mm": 0.22
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0.7,
+          "fim": 1,
+          "mínimo_mm": 6.41,
+          "máximo_mm": 6.95,
+          "deslize_mm": 0.17
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0.755,
+          "fim": 1,
+          "mínimo_mm": 6.75,
+          "máximo_mm": 6.79,
+          "deslize_mm": 0.02
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0.82,
+          "fim": 1,
+          "mínimo_mm": 4.26,
+          "máximo_mm": 4.26,
+          "deslize_mm": 0.0
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.99,
+          "fim": 1,
+          "mínimo_mm": 4.49,
+          "máximo_mm": 4.49,
+          "deslize_mm": 0.0
+        }
+      ]
+    },
+    {
+      "clipe": "23 - Ruptura rápida",
+      "amostras": 69,
+      "mínimo_mm": 0.93,
+      "quadro_mínimo": 9.5,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.745,
+      "alongamento_máximo": 4.408,
+      "apoios": [
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.63,
+          "mínimo_mm": 0.93,
+          "máximo_mm": 1.26,
+          "deslize_mm": 0.33
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.77,
+          "mínimo_mm": 1.14,
+          "máximo_mm": 1.5,
+          "deslize_mm": 0.38
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0.7,
+          "fim": 1,
+          "mínimo_mm": 3.59,
+          "máximo_mm": 6.73,
+          "deslize_mm": 1.4
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0.755,
+          "fim": 1,
+          "mínimo_mm": 6.39,
+          "máximo_mm": 6.79,
+          "deslize_mm": 0.25
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0.82,
+          "fim": 1,
+          "mínimo_mm": 4.24,
+          "máximo_mm": 4.26,
+          "deslize_mm": 0.02
+        }
+      ]
+    },
+    {
+      "clipe": "24 - Ruptura interrompida",
+      "amostras": 157,
+      "mínimo_mm": 0.97,
+      "quadro_mínimo": 61.5,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.654,
+      "alongamento_máximo": 3.916,
+      "apoios": [
+        {
+          "apoio": "foot_left",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 0.97,
+          "máximo_mm": 1.26,
+          "deslize_mm": 0.15
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 1.19,
+          "máximo_mm": 1.5,
+          "deslize_mm": 0.18
+        }
+      ]
+    },
+    {
+      "clipe": "25 - Preparação quadrúpede",
+      "amostras": 77,
+      "mínimo_mm": 4.26,
+      "quadro_mínimo": 1.0,
+      "altura_máxima_m": 0.871,
+      "alongamento_p99_pior_quadro": 1.686,
+      "alongamento_máximo": 3.734,
+      "apoios": [
+        {
+          "apoio": "foot_left",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 4.26,
+          "máximo_mm": 4.26,
+          "deslize_mm": 0.0
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 4.49,
+          "máximo_mm": 4.49,
+          "deslize_mm": 0.0
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 6.79,
+          "máximo_mm": 6.79,
+          "deslize_mm": 0.0
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 6.72,
+          "máximo_mm": 6.72,
+          "deslize_mm": 0.0
+        }
+      ]
+    },
+    {
+      "clipe": "26 - Arrancada",
+      "amostras": 51,
+      "mínimo_mm": -1.16,
+      "quadro_mínimo": 18.5,
+      "altura_máxima_m": 0.931,
+      "alongamento_p99_pior_quadro": 1.894,
+      "alongamento_máximo": 4.759,
+      "apoios": [
+        {
+          "apoio": "hand_right",
+          "início": 0,
+          "fim": 0.03,
+          "mínimo_mm": 6.72,
+          "máximo_mm": 6.92,
+          "deslize_mm": 0.43
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.08,
+          "mínimo_mm": 4.38,
+          "máximo_mm": 4.49,
+          "deslize_mm": 0.39
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0,
+          "fim": 0.32,
+          "mínimo_mm": 6.22,
+          "máximo_mm": 6.79,
+          "deslize_mm": 0.82
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.5,
+          "mínimo_mm": 4.0,
+          "máximo_mm": 5.65,
+          "deslize_mm": 4.24
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0.43,
+          "fim": 1,
+          "mínimo_mm": 5.04,
+          "máximo_mm": 6.72,
+          "deslize_mm": 1.63
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.48,
+          "fim": 1,
+          "mínimo_mm": 2.55,
+          "máximo_mm": 4.5,
+          "deslize_mm": 1.77
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0.72,
+          "fim": 1,
+          "mínimo_mm": -1.16,
+          "máximo_mm": 8.31,
+          "deslize_mm": 4.45
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0.9,
+          "fim": 1,
+          "mínimo_mm": 3.38,
+          "máximo_mm": 5.7,
+          "deslize_mm": 4.78
+        }
+      ]
+    },
+    {
+      "clipe": "27 - Corrida moderada",
+      "amostras": 61,
+      "mínimo_mm": -1.36,
+      "quadro_mínimo": 17.5,
+      "altura_máxima_m": 0.931,
+      "alongamento_p99_pior_quadro": 1.793,
+      "alongamento_máximo": 4.522,
+      "apoios": [
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.05,
+          "mínimo_mm": 3.87,
+          "máximo_mm": 4.9,
+          "deslize_mm": 2.6
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0,
+          "fim": 0.3,
+          "mínimo_mm": 5.85,
+          "máximo_mm": 6.79,
+          "deslize_mm": 0.95
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.6,
+          "mínimo_mm": -1.36,
+          "máximo_mm": 4.26,
+          "deslize_mm": 6.2
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0.17,
+          "fim": 0.79,
+          "mínimo_mm": 3.38,
+          "máximo_mm": 6.86,
+          "deslize_mm": 1.99
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.43,
+          "fim": 1,
+          "mínimo_mm": 3.98,
+          "máximo_mm": 4.5,
+          "deslize_mm": 0.5
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0.68,
+          "fim": 1,
+          "mínimo_mm": 6.09,
+          "máximo_mm": 7.12,
+          "deslize_mm": 1.92
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0.98,
+          "fim": 1,
+          "mínimo_mm": 4.26,
+          "máximo_mm": 4.87,
+          "deslize_mm": 1.71
+        }
+      ]
+    },
+    {
+      "clipe": "28 - Corrida intensa",
+      "amostras": 31,
+      "mínimo_mm": 0.22,
+      "quadro_mínimo": 3.5,
+      "altura_máxima_m": 0.931,
+      "alongamento_p99_pior_quadro": 1.793,
+      "alongamento_máximo": 4.55,
+      "apoios": [
+        {
+          "apoio": "hand_left",
+          "início": 0,
+          "fim": 0.25,
+          "mínimo_mm": 2.48,
+          "máximo_mm": 6.79,
+          "deslize_mm": 2.98
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.52,
+          "mínimo_mm": 0.25,
+          "máximo_mm": 4.26,
+          "deslize_mm": 4.21
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0.18,
+          "fim": 0.74,
+          "mínimo_mm": 0.22,
+          "máximo_mm": 6.72,
+          "deslize_mm": 4.1
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.47,
+          "fim": 1,
+          "mínimo_mm": 2.14,
+          "máximo_mm": 4.5,
+          "deslize_mm": 2.17
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0.69,
+          "fim": 1,
+          "mínimo_mm": 3.82,
+          "máximo_mm": 6.91,
+          "deslize_mm": 4.64
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0.96,
+          "fim": 1,
+          "mínimo_mm": 4.26,
+          "máximo_mm": 6.7,
+          "deslize_mm": 5.55
+        }
+      ]
+    },
+    {
+      "clipe": "29 - Mudança de direção",
+      "amostras": 49,
+      "mínimo_mm": -1.24,
+      "quadro_mínimo": 13.5,
+      "altura_máxima_m": 0.926,
+      "alongamento_p99_pior_quadro": 1.772,
+      "alongamento_máximo": 4.616,
+      "apoios": [
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.03,
+          "mínimo_mm": 3.05,
+          "máximo_mm": 4.49,
+          "deslize_mm": 0.36
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0,
+          "fim": 0.28,
+          "mínimo_mm": 5.15,
+          "máximo_mm": 6.79,
+          "deslize_mm": 1.51
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.58,
+          "mínimo_mm": -1.24,
+          "máximo_mm": 4.26,
+          "deslize_mm": 5.75
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0.17,
+          "fim": 0.77,
+          "mínimo_mm": -0.21,
+          "máximo_mm": 20.28,
+          "deslize_mm": 13.87
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.43,
+          "fim": 1,
+          "mínimo_mm": 3.53,
+          "máximo_mm": 4.88,
+          "deslize_mm": 2.16
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0.68,
+          "fim": 1,
+          "mínimo_mm": 5.3,
+          "máximo_mm": 6.79,
+          "deslize_mm": 1.96
+        }
+      ]
+    },
+    {
+      "clipe": "30 - Desacelerar",
+      "amostras": 61,
+      "mínimo_mm": -0.47,
+      "quadro_mínimo": 1.5,
+      "altura_máxima_m": 0.931,
+      "alongamento_p99_pior_quadro": 1.793,
+      "alongamento_máximo": 4.623,
+      "apoios": [
+        {
+          "apoio": "hand_right",
+          "início": 0,
+          "fim": 0.025,
+          "mínimo_mm": 4.44,
+          "máximo_mm": 6.72,
+          "deslize_mm": 4.49
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.085,
+          "mínimo_mm": -0.47,
+          "máximo_mm": 4.49,
+          "deslize_mm": 6.87
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0,
+          "fim": 0.21,
+          "mínimo_mm": 3.64,
+          "máximo_mm": 6.79,
+          "deslize_mm": 3.77
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.305,
+          "mínimo_mm": 0.08,
+          "máximo_mm": 4.26,
+          "deslize_mm": 4.5
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0.2,
+          "fim": 0.525,
+          "mínimo_mm": 4.22,
+          "máximo_mm": 6.72,
+          "deslize_mm": 3.48
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.26,
+          "fim": 0.585,
+          "mínimo_mm": 3.15,
+          "máximo_mm": 6.76,
+          "deslize_mm": 3.8
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0.385,
+          "fim": 0.71,
+          "mínimo_mm": 4.84,
+          "máximo_mm": 6.79,
+          "deslize_mm": 2.52
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0.48,
+          "fim": 0.805,
+          "mínimo_mm": 3.45,
+          "máximo_mm": 6.61,
+          "deslize_mm": 5.68
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0.7,
+          "fim": 1,
+          "mínimo_mm": 5.25,
+          "máximo_mm": 6.72,
+          "deslize_mm": 2.67
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.76,
+          "fim": 1,
+          "mínimo_mm": 4.12,
+          "máximo_mm": 4.5,
+          "deslize_mm": 0.38
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0.885,
+          "fim": 1,
+          "mínimo_mm": 5.72,
+          "máximo_mm": 6.79,
+          "deslize_mm": 1.57
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0.98,
+          "fim": 1,
+          "mínimo_mm": 4.26,
+          "máximo_mm": 6.59,
+          "deslize_mm": 1.12
+        }
+      ]
+    },
+    {
+      "clipe": "31 - Parada brusca",
+      "amostras": 29,
+      "mínimo_mm": -0.81,
+      "quadro_mínimo": 0.5,
+      "altura_máxima_m": 0.927,
+      "alongamento_p99_pior_quadro": 1.759,
+      "alongamento_máximo": 4.425,
+      "apoios": [
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.08,
+          "mínimo_mm": -0.81,
+          "máximo_mm": 4.49,
+          "deslize_mm": 3.92
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0,
+          "fim": 0.2,
+          "mínimo_mm": 2.24,
+          "máximo_mm": 6.72,
+          "deslize_mm": 3.86
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0,
+          "fim": 0.36,
+          "mínimo_mm": 2.89,
+          "máximo_mm": 6.79,
+          "deslize_mm": 3.63
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.54,
+          "mínimo_mm": 2.09,
+          "máximo_mm": 8.16,
+          "deslize_mm": 6.43
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.35,
+          "fim": 1,
+          "mínimo_mm": 3.74,
+          "máximo_mm": 4.5,
+          "deslize_mm": 0.86
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0.47,
+          "fim": 1,
+          "mínimo_mm": 4.72,
+          "máximo_mm": 6.72,
+          "deslize_mm": 3.51
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0.63,
+          "fim": 1,
+          "mínimo_mm": 5.5,
+          "máximo_mm": 6.79,
+          "deslize_mm": 1.93
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0.81,
+          "fim": 1,
+          "mínimo_mm": 4.1,
+          "máximo_mm": 7.04,
+          "deslize_mm": 3.96
+        }
+      ]
+    },
+    {
+      "clipe": "32 - Retorno humanoide",
+      "amostras": 187,
+      "mínimo_mm": 1.22,
+      "quadro_mínimo": 66.5,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.75,
+      "alongamento_máximo": 4.41,
+      "apoios": [
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.01,
+          "mínimo_mm": 4.49,
+          "máximo_mm": 4.49,
+          "deslize_mm": 0.01
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.18,
+          "mínimo_mm": 4.26,
+          "máximo_mm": 4.26,
+          "deslize_mm": 0.24
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0,
+          "fim": 0.245,
+          "mínimo_mm": 6.69,
+          "máximo_mm": 6.79,
+          "deslize_mm": 0.05
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0,
+          "fim": 0.3,
+          "mínimo_mm": 5.94,
+          "máximo_mm": 6.72,
+          "deslize_mm": 0.32
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.23,
+          "fim": 1,
+          "mínimo_mm": 1.45,
+          "máximo_mm": 1.5,
+          "deslize_mm": 0.41
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0.37,
+          "fim": 1,
+          "mínimo_mm": 1.22,
+          "máximo_mm": 1.26,
+          "deslize_mm": 0.6
+        }
+      ]
+    },
+    {
+      "clipe": "33 - Despedida lenta",
+      "amostras": 325,
+      "mínimo_mm": 1.26,
+      "quadro_mínimo": 0.0,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.181,
+      "alongamento_máximo": 1.853,
+      "apoios": []
+    },
+    {
+      "clipe": "34 - Avanço do rosto",
+      "amostras": 97,
+      "mínimo_mm": 1.19,
+      "quadro_mínimo": 4.5,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.099,
+      "alongamento_máximo": 1.328,
+      "apoios": []
+    },
+    {
+      "clipe": "35 - Gesto de contato",
+      "amostras": 145,
+      "mínimo_mm": 1.23,
+      "quadro_mínimo": 6.5,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.207,
+      "alongamento_máximo": 2.42,
+      "apoios": []
+    },
+    {
+      "clipe": "36 - Inclinação extrema",
+      "amostras": 253,
+      "mínimo_mm": 1.26,
+      "quadro_mínimo": 0.0,
+      "altura_máxima_m": 2.197,
+      "alongamento_p99_pior_quadro": 1.055,
+      "alongamento_máximo": 1.344,
+      "apoios": []
+    },
+    {
+      "clipe": "37 - Vigília quadrúpede",
+      "amostras": 241,
+      "mínimo_mm": 4.26,
+      "quadro_mínimo": 1.0,
+      "altura_máxima_m": 0.873,
+      "alongamento_p99_pior_quadro": 1.686,
+      "alongamento_máximo": 3.734,
+      "apoios": [
+        {
+          "apoio": "foot_left",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 4.26,
+          "máximo_mm": 4.26,
+          "deslize_mm": 0.0
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 4.49,
+          "máximo_mm": 4.49,
+          "deslize_mm": 0.0
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 6.79,
+          "máximo_mm": 6.79,
+          "deslize_mm": 0.0
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 6.72,
+          "máximo_mm": 6.72,
+          "deslize_mm": 0.0
+        }
+      ]
+    },
+    {
+      "clipe": "38 - Retirada quadrúpede",
+      "amostras": 73,
+      "mínimo_mm": 3.96,
+      "quadro_mínimo": 13.5,
+      "altura_máxima_m": 0.931,
+      "alongamento_p99_pior_quadro": 1.804,
+      "alongamento_máximo": 4.587,
+      "apoios": [
+        {
+          "apoio": "foot_right",
+          "início": 0,
+          "fim": 0.13,
+          "mínimo_mm": 4.38,
+          "máximo_mm": 4.87,
+          "deslize_mm": 1.1
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0,
+          "fim": 0.38,
+          "mínimo_mm": 6.37,
+          "máximo_mm": 6.79,
+          "deslize_mm": 1.2
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0,
+          "fim": 0.68,
+          "mínimo_mm": 3.96,
+          "máximo_mm": 4.26,
+          "deslize_mm": 0.2
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0.17,
+          "fim": 0.87,
+          "mínimo_mm": 6.11,
+          "máximo_mm": 6.72,
+          "deslize_mm": 0.7
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.43,
+          "fim": 1,
+          "mínimo_mm": 4.2,
+          "máximo_mm": 5.08,
+          "deslize_mm": 2.4
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0.68,
+          "fim": 1,
+          "mínimo_mm": 6.12,
+          "máximo_mm": 7.6,
+          "deslize_mm": 2.51
+        },
+        {
+          "apoio": "foot_left",
+          "início": 0.98,
+          "fim": 1,
+          "mínimo_mm": 4.26,
+          "máximo_mm": 4.27,
+          "deslize_mm": 0.6
+        }
+      ]
+    },
+    {
+      "clipe": "39 - Imóvel após ameaça",
+      "amostras": 301,
+      "mínimo_mm": 4.26,
+      "quadro_mínimo": 71.5,
+      "altura_máxima_m": 0.867,
+      "alongamento_p99_pior_quadro": 1.686,
+      "alongamento_máximo": 3.734,
+      "apoios": [
+        {
+          "apoio": "foot_left",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 4.26,
+          "máximo_mm": 4.26,
+          "deslize_mm": 0.0
+        },
+        {
+          "apoio": "foot_right",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 4.49,
+          "máximo_mm": 4.49,
+          "deslize_mm": 0.0
+        },
+        {
+          "apoio": "hand_left",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 6.79,
+          "máximo_mm": 6.79,
+          "deslize_mm": 0.0
+        },
+        {
+          "apoio": "hand_right",
+          "início": 0.0,
+          "fim": 1.0,
+          "mínimo_mm": 6.72,
+          "máximo_mm": 6.72,
+          "deslize_mm": 0.0
+        }
+      ]
+    }
+  ]
+}

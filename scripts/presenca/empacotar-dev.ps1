@@ -31,10 +31,12 @@ try {
     Add-Text $archive 'ABRIR DEV LAB.cmd' "@echo off`r`nstart `"`" `"%~dp0ainda-vivo.exe`" --dev-lab`r`n" ([Text.Encoding]::ASCII)
     $readme = @"
 AINDA VIVO v$version
-Windows x64 • Etapa 1 da Presença e do Dev Lab
+Windows x64 • Build experimental do Dev Lab da Presença
 
 Extraia todo o pacote e abra ABRIR DEV LAB.cmd. No menu ou em campanha,
-use Ctrl+I para entrar e voltar. A aba Ajuda explica os controles.
+use Ctrl+I para entrar e voltar. Na aba Animação, escolha um clipe,
+teste a Pista ou abra a Aproximação em primeira pessoa. A aba Ajuda
+explica os controles da câmera e da sala.
 Para colocar a Presença 3D passiva no corredor inicial, execute
 .\ainda-vivo.exe --dev-lab --lab-campaign-preview pelo terminal.
 

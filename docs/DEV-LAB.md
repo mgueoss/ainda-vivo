@@ -1,6 +1,6 @@
 # Dev Lab do AINDA VIVO
 
-A build experimental v0.0.12-dev.1 inclui o Dev Lab. No pacote Windows, extraia os arquivos e execute **ABRIR DEV LAB.cmd**. No menu ou durante a campanha, pressione **Ctrl+I** para entrar ou voltar. O botão de busca recebe a digitação até **Enter**, **Esc** ou um clique em outro controle.
+A build experimental v0.0.12-dev.2 inclui o Dev Lab. No pacote Windows, extraia os arquivos e execute **ABRIR DEV LAB.cmd**. No menu ou durante a campanha, pressione **Ctrl+I** para entrar ou voltar. O botão de busca recebe a digitação até **Enter**, **Esc** ou um clique em outro controle.
 
 | Atalho | Ação |
 |---|---|
@@ -23,7 +23,17 @@ A build experimental v0.0.12-dev.1 inclui o Dev Lab. No pacote Windows, extraia 
 
 Na biblioteca, a busca combina o nome e a categoria. Clique em um item para adicionar uma instância. **Comparar** monta uma cena com a nova Presença, o recorte da máscara antiga e um manequim de 1,78 m. As ações de selecionar, duplicar e remover operam sobre a cena de laboratório. O catálogo inicial reaproveita as malhas da Bomba 02, da comporta e de um pilar da nave.
 
-**Objeto** permite deslocar, girar, redimensionar, ocultar e trocar a leitura do material. Os dados técnicos usam a malha importada. Colisores existentes aparecem como guias. **Luz** tem estúdio, Estação 07, corredor escuro, emergência e só lanterna, além de controles de direção, cor, preenchimento, exposição, névoa, sombras e VHS. **Poses** lista os clipes encontrados no GLB. O cursor de reprodução pode avançar ou retroceder em passos de 0,1 s e ir a frações do clipe. Para aproximar rosto ou mãos, escolha a pose imóvel e use **Objeto → Rosto** ou **Mãos**.
+**Objeto** permite deslocar, girar, redimensionar, ocultar e trocar a leitura do material. Os dados técnicos usam a malha importada. O guia **Colisor** mostra as caixas de referência da postura em pé e quadrúpede. **Luz** tem estúdio, Estação 07, corredor escuro, emergência e só lanterna, além de controles de direção, cor, preenchimento, exposição, névoa, sombras e VHS. Para aproximar rosto ou mãos, escolha a pose imóvel e use **Objeto → Rosto** ou **Mãos**.
+
+## Animação
+
+- Selecione a Presença e abra **Animação**. A lista reúne os 39 clipes do GLB. Use **Reproduzir**, **Reiniciar** ou **Loop**. A barra permite ir a um ponto do clipe. Os traços indicam eventos, e **−1 quadro** e **+1 quadro** pausam a reprodução e movem uma amostra de origem a 30 Hz.
+- **Apoios** projeta mãos e pés no piso. Verde indica a janela de apoio autorada, e laranja indica um membro em transição. A linha vertical liga a projeção ao osso. **Ossos** e **Wireframe** ajudam a inspecionar deformações.
+- **Velocidade do clipe** vai de 0,1× a 3×. **Deslocar** aplica o avanço previsto pelo clipe no espaço, e o controle **Deslocamento** ajusta esse avanço entre 0× e 2×. Use 1× para comparar a passada com o deslocamento para o qual ela foi animada.
+- **Comparar A/B** coloca duas instâncias no estúdio. Selecione cada uma na biblioteca, escolha seu clipe e avance até a pose desejada. A instância fora da seleção conserva sua pose.
+- **Olhar para o operador** escolhe o clipe de acompanhamento e conduz a amostra de acordo com a posição da câmera diante da criatura. Para testar, mova-se lateralmente entre vistas frontais.
+- **Sequência** encadeia observação, espiada, ruptura, vigília e retorno. **Pista** percorre a faixa marcada da sala com aceleração, curva e desaceleração. **Aproximação** coloca a câmera no ponto de observação em primeira pessoa. A Presença corre até uma marca à frente e permanece imóvel. O operador pode se mover ou mudar a iluminação durante o teste. A demonstração ignora dano, captura e sanidade, mesmo quando iniciada a partir da campanha.
+- **Encerrar demonstração** devolve o modelo ao ponto de inspeção da cena. Para voltar à câmera inicial, use **Ctrl+R**. Encerrar o Lab preserva a câmera e o progresso da campanha.
 
 **Salvar cena** grava as preferências em `%LOCALAPPDATA%\AindaVivo\dev-lab\settings.json`. As capturas ficam em `%LOCALAPPDATA%\AindaVivo\dev-lab\captures`. Restaurar os padrões vale para a sessão corrente. Salvar depois torna essa escolha persistente. As alterações de instâncias e materiais no Lab são locais à cena.
 

@@ -31,16 +31,22 @@ pub(super) struct KeyLight;
 pub(super) struct LabTorch;
 #[derive(Component)]
 pub(super) struct Grid;
+#[derive(Component)]
+pub(super) struct Seat;
 
 #[derive(Clone, Copy, Component, PartialEq, Eq)]
 pub(super) enum Guide {
     Bones,
     Bounds,
     Wire,
+    Planted,
+    Lifted,
+    Track,
 }
 
 pub(super) struct Room {
     pub camera: Entity,
+    pub seat: Entity,
     pub solids: Vec<Aabb>,
 }
 
@@ -234,10 +240,42 @@ pub(super) fn spawn(
         meshes.add(line_mesh(ruler)),
         unlit(materials, Color::srgb(0.66, 0.57, 0.41)),
     );
+    let mut lane = Vec::new();
+    for index in 0..54 {
+        let distance = index as f32 * 0.25;
+        let (point, yaw) = super::motion::track(distance);
+        let across = Quat::from_rotation_y(yaw) * Vec3::X;
+        let point = point.with_y(0.008);
+        if index % 4 == 0 {
+            lane.extend([
+                (point - across * 0.58).to_array(),
+                (point + across * 0.58).to_array(),
+            ]);
+        }
+        if index > 0 {
+            let (previous, heading) = super::motion::track(distance - 0.25);
+            let normal = Quat::from_rotation_y(heading) * Vec3::X;
+            for side in [-0.58, 0.58] {
+                lane.extend([
+                    (previous.with_y(0.008) + normal * side).to_array(),
+                    (point + across * side).to_array(),
+                ]);
+            }
+        }
+    }
+    detail_mesh(
+        commands,
+        root,
+        Guide::Track,
+        meshes.add(line_mesh(lane)),
+        unlit(materials, Color::srgb(0.68, 0.55, 0.24)),
+    );
     for (guide, tint) in [
         (Guide::Bones, Color::srgb(1.0, 0.54, 0.18)),
         (Guide::Bounds, Color::srgb(0.31, 0.92, 0.79)),
         (Guide::Wire, Color::srgb(0.10, 0.52, 0.48)),
+        (Guide::Planted, Color::srgb(0.37, 1.0, 0.72)),
+        (Guide::Lifted, Color::srgb(1.0, 0.57, 0.23)),
     ] {
         detail_mesh(
             commands,
@@ -247,7 +285,36 @@ pub(super) fn spawn(
             unlit(materials, tint),
         );
     }
-    Room { camera, solids }
+    let seat = commands
+        .spawn((
+            Seat,
+            ChildOf(root),
+            Name::new("Banco para testar apoio sentado"),
+            Transform::default(),
+            Visibility::Hidden,
+        ))
+        .with_children(|chair| {
+            for (position, size) in [
+                ([0.0, 0.464, 0.0], [0.53, 0.060, 0.47]),
+                ([-0.209, 0.218, -0.160], [0.037, 0.437, 0.037]),
+                ([-0.209, 0.218, 0.160], [0.037, 0.437, 0.037]),
+                ([0.209, 0.218, -0.160], [0.037, 0.437, 0.037]),
+                ([0.209, 0.218, 0.160], [0.037, 0.437, 0.037]),
+            ] {
+                chair.spawn((
+                    Mesh3d(cube.clone()),
+                    MeshMaterial3d(palette[3].clone()),
+                    layer.clone(),
+                    Transform::from_translation(Vec3::from(position)).with_scale(Vec3::from(size)),
+                ));
+            }
+        })
+        .id();
+    Room {
+        camera,
+        seat,
+        solids,
+    }
 }
 
 fn detail_mesh(

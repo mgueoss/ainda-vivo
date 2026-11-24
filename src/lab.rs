@@ -1,4 +1,6 @@
 mod library;
+mod motion;
+mod motion_qa;
 mod panel;
 mod qa;
 mod room;
@@ -42,6 +44,8 @@ pub(super) struct Options {
     source: Option<PathBuf>,
     settings: Option<PathBuf>,
     smoke: bool,
+    motion_smoke: bool,
+    record_motion: bool,
     captures: Option<PathBuf>,
 }
 
@@ -54,13 +58,14 @@ impl Options {
                 .find(|pair| pair[0] == key)
                 .map(|pair| PathBuf::from(&pair[1]))
         };
-        let smoke = has("--smoke-lab");
+        let motion_smoke = has("--smoke-motion");
+        let smoke = has("--smoke-lab") || motion_smoke;
         let enabled = has("--dev-lab") || smoke;
         let local =
             std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("AindaVivo/dev-lab"));
         Self {
             enabled,
-            preview_station: enabled && (smoke || has("--lab-campaign-preview")),
+            preview_station: enabled && (has("--smoke-lab") || has("--lab-campaign-preview")),
             source: enabled.then(|| value("--lab-assets")).flatten(),
             settings: value("--lab-config").or_else(|| {
                 (!smoke)
@@ -73,6 +78,8 @@ impl Options {
                     .flatten()
             }),
             smoke,
+            motion_smoke,
+            record_motion: motion_smoke && has("--lab-record-motion"),
         }
     }
 
@@ -124,10 +131,15 @@ impl Plugin for LabPlugin {
             })
             .init_resource::<library::Catalog>()
             .add_message::<Action>()
+            .add_message::<motion::MotionEvent>()
             .add_systems(Startup, library::begin_import)
             .add_systems(
                 PreUpdate,
-                (qa::inject_keys, switch.in_set(crate::app::BeforeCampaign))
+                (
+                    qa::inject_keys,
+                    motion_qa::open,
+                    switch.in_set(crate::app::BeforeCampaign),
+                )
                     .chain()
                     .after(InputSystems),
             )
@@ -140,11 +152,13 @@ impl Plugin for LabPlugin {
                     shortcuts,
                     actions,
                     camera_input,
-                    library::sync,
                     library::animate,
+                    library::sync,
+                    library::remember_events,
                     room::present,
                     hold_campaign_audio,
                     panel::refresh,
+                    panel::timeline_display,
                     cursor,
                 )
                     .chain()
@@ -158,8 +172,14 @@ impl Plugin for LabPlugin {
                     .before(VisibilitySystems::VisibilityPropagate)
                     .run_if(active),
             )
-            .add_systems(Last, qa::verify);
-        if app.world().resource::<Options>().smoke {
+            .add_systems(Last, (qa::verify, motion_qa::verify));
+        let options = app.world().resource::<Options>();
+        if options.motion_smoke {
+            app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                std::time::Duration::from_secs_f64(1.0 / 60.0),
+            ))
+            .insert_resource(motion_qa::Check::from_args());
+        } else if options.smoke {
             app.insert_resource(qa::Check::from_args());
         }
     }
@@ -199,9 +219,17 @@ struct Playback {
     running: bool,
     repeat: bool,
     speed: f32,
-    seek_by: f32,
     rewind: bool,
     seek: Option<f32>,
+    step: i8,
+    contacts: bool,
+    displacement: bool,
+    follow_gaze: bool,
+    seat: bool,
+    speed_scale: f32,
+    offset: Vec3,
+    run: Option<motion::Run>,
+    last_event: Option<motion::EventKind>,
 }
 
 impl Default for Playback {
@@ -210,10 +238,28 @@ impl Default for Playback {
             running: false,
             repeat: true,
             speed: 1.0,
-            seek_by: 0.0,
             rewind: false,
             seek: None,
+            step: 0,
+            contacts: false,
+            displacement: false,
+            follow_gaze: false,
+            seat: false,
+            speed_scale: 1.0,
+            offset: Vec3::ZERO,
+            run: None,
+            last_event: None,
         }
+    }
+}
+
+impl Playback {
+    fn cancel_run(&mut self) {
+        self.offset = Vec3::ZERO;
+        self.run = None;
+        self.follow_gaze = false;
+        self.seat = false;
+        self.last_event = None;
     }
 }
 
@@ -432,6 +478,7 @@ enum Knob {
     Fov,
     Speed,
     Playback,
+    Displacement,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Message)]
@@ -467,10 +514,16 @@ enum Action {
     ModelBounds,
     Material,
     Clip(usize),
+    CompareClips,
+    MotionDemo(motion::Mode),
+    StopDemo,
+    Contacts,
+    Displace,
+    FollowGaze,
+    Step(i8),
     Play,
     Repeat,
     Rewind,
-    Seek(f32),
     SeekFraction(f32),
     Adjust(Knob, f32),
     FreeCamera,
@@ -557,6 +610,7 @@ fn actions(
             }
             Action::Remove => {
                 config.remove();
+                active.playback.cancel_run();
             }
             Action::Add(model) => {
                 let spot = config.next_spot();
@@ -582,6 +636,78 @@ fn actions(
                 config.lens = Lens::default();
                 active.reset_view(&config.lens);
                 active.playback = Playback::default();
+            }
+            Action::CompareClips => {
+                if let Some(original) = config.selected().filter(|s| s.model == Model::Presence) {
+                    let mut a = original.clone();
+                    a.position = [-0.95, 0.0, 0.0];
+                    a.visible = true;
+                    let mut b = a.clone();
+                    b.position[0] *= -1.0;
+                    b.clip = if a.clip == 0 { 12 } else { 0 };
+                    config.instances = vec![a, b];
+                    config.selected = 0;
+                    config.lens = Lens::default();
+                    active.reset_view(&config.lens);
+                    active.playback = Playback::default();
+                    lab.status =
+                        "A à esquerda, B à direita. Selecione cada instância e ajuste o clipe."
+                            .into();
+                }
+            }
+            Action::MotionDemo(mode) => {
+                if !mode
+                    .steps()
+                    .iter()
+                    .all(|&(id, _)| catalog.number(id).is_some())
+                {
+                    lab.status = "Os clipes da demonstração precisam estar carregados.".into();
+                    continue;
+                }
+                let index = config.selected;
+                let Some(actor) = config
+                    .instances
+                    .get_mut(index)
+                    .filter(|s| s.model == Model::Presence)
+                else {
+                    lab.status = "Selecione a Presença para iniciar a demonstração.".into();
+                    continue;
+                };
+                actor.visible = true;
+                active.playback.cancel_run();
+                active.playback.rewind = true;
+                active.playback.running = true;
+                active.playback.repeat = false;
+                active.playback.run = Some(motion::Run::new(mode));
+                config.lighting.vhs = 0;
+                match mode {
+                    motion::Mode::Approach => {
+                        config.lens = Lens {
+                            free: false,
+                            position: [motion::APPROACH_X, 1.622, motion::APPROACH_VIEW_Z],
+                            yaw: 0.0,
+                            pitch: -0.21,
+                            ..default()
+                        };
+                        active.reset_view(&config.lens);
+                    }
+                    motion::Mode::Track => {
+                        config.lens = Lens {
+                            free: true,
+                            position: [-7.70, 1.85, -3.00],
+                            yaw: -0.16,
+                            pitch: -0.21,
+                            ..default()
+                        };
+                        active.reset_view(&config.lens);
+                    }
+                    motion::Mode::Sequence => {}
+                }
+                lab.status = format!("{} em reprodução.", mode.label());
+            }
+            Action::StopDemo => {
+                active.playback.cancel_run();
+                active.playback.running = false;
             }
             Action::ResetModel => {
                 let index = config.selected;
@@ -654,6 +780,30 @@ fn actions(
             Action::Tape => config.lighting.vhs = (config.lighting.vhs + 1) % 3,
             Action::Grid => config.grid = !config.grid,
             Action::Skeleton => config.skeleton = !config.skeleton,
+            Action::Contacts => active.playback.contacts = !active.playback.contacts,
+            Action::Displace => {
+                active.playback.displacement = !active.playback.displacement;
+            }
+            Action::FollowGaze => {
+                if active.playback.follow_gaze {
+                    active.playback.follow_gaze = false;
+                    active.playback.running = false;
+                } else if let Some(index) = catalog.number(12) {
+                    let selected = config.selected;
+                    if let Some(spec) = config
+                        .instances
+                        .get_mut(selected)
+                        .filter(|spec| spec.model == Model::Presence)
+                    {
+                        spec.clip = index;
+                        active.playback.cancel_run();
+                        active.playback.follow_gaze = true;
+                        active.playback.rewind = true;
+                        active.playback.running = true;
+                        active.playback.repeat = false;
+                    }
+                }
+            }
             Action::Wireframe => config.wireframe = !config.wireframe,
             Action::HideUi => config.hidden = !config.hidden,
             Action::Visible
@@ -670,17 +820,32 @@ fn actions(
                         Action::Material => spec.surface = spec.surface.next(),
                         Action::Clip(clip) => {
                             spec.clip = clip;
-                            active.playback = Playback::default();
+                            active.playback.cancel_run();
+                            active.playback.rewind = true;
+                            if let Some(clip) = catalog.clips().get(clip) {
+                                active.playback.repeat = clip.motion.repeat;
+                            }
                         }
                         _ => unreachable!(),
                     }
                 }
             }
-            Action::Play => active.playback.running = !active.playback.running,
+            Action::Play => {
+                active.playback.running = !active.playback.running;
+                if active.playback.run.as_ref().is_some_and(|r| r.complete) {
+                    active.playback.rewind = true;
+                }
+            }
             Action::Repeat => active.playback.repeat = !active.playback.repeat,
-            Action::Rewind => active.playback.rewind = true,
-            Action::Seek(seconds) => active.playback.seek_by += seconds,
+            Action::Rewind => {
+                active.playback.rewind = true;
+                active.playback.last_event = None;
+            }
             Action::SeekFraction(fraction) => active.playback.seek = Some(fraction.clamp(0.0, 1.0)),
+            Action::Step(frames) => {
+                active.playback.running = false;
+                active.playback.step = active.playback.step.saturating_add(frames);
+            }
             Action::Adjust(knob, delta) => {
                 let selected = config.selected;
                 match knob {
@@ -707,7 +872,11 @@ fn actions(
                     Knob::Fov => config.lens.fov += delta,
                     Knob::Speed => config.lens.speed += delta,
                     Knob::Playback => {
-                        active.playback.speed = (active.playback.speed + delta).clamp(0.25, 3.0)
+                        active.playback.speed = (active.playback.speed + delta).clamp(0.1, 3.0);
+                    }
+                    Knob::Displacement => {
+                        active.playback.speed_scale =
+                            (active.playback.speed_scale + delta).clamp(0.0, 2.0);
                     }
                 }
                 config.validate();

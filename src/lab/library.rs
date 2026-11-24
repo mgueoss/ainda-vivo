@@ -1,6 +1,7 @@
 use super::{
     Lab, Options,
-    room::{FLOOR, Guide, LAYER},
+    motion::{self, ClipMotion, Clock, Limb, MotionEvent},
+    room::{FLOOR, Guide, LAYER, Seat},
     settings::{Config, Model, Surface},
 };
 use crate::{
@@ -9,10 +10,7 @@ use crate::{
 };
 use ainda_vivo_core::collision::{Aabb, body_bounds};
 use bevy::{
-    animation::{
-        RepeatAnimation,
-        graph::{AnimationGraph, AnimationGraphHandle, AnimationNodeIndex},
-    },
+    animation::graph::{AnimationGraph, AnimationGraphHandle, AnimationNodeIndex},
     asset::{LoadState, RenderAssetUsages},
     camera::{
         primitives::MeshAabb,
@@ -58,6 +56,7 @@ pub(super) struct Stats {
 pub(super) struct Clip {
     pub label: String,
     pub duration: f32,
+    pub motion: ClipMotion,
     node: AnimationNodeIndex,
 }
 
@@ -88,6 +87,13 @@ impl Catalog {
 
     pub fn clips(&self) -> &[Clip] {
         self.import.as_ref().map_or(&[], |model| &model.clips)
+    }
+
+    pub fn number(&self, id: u8) -> Option<usize> {
+        self.clips().iter().position(|clip| {
+            clip.motion.duration > 0.0
+                && clip.label.get(..2).and_then(|n| n.parse().ok()) == Some(id)
+        })
     }
 
     pub fn revision(&self) -> u32 {
@@ -130,6 +136,91 @@ pub(super) struct Part {
 pub(super) struct Player {
     owner: Entity,
     clip: usize,
+    clock: Clock,
+    fade: Fade,
+    evaluating: bool,
+}
+
+impl Player {
+    fn evaluate(
+        &mut self,
+        animator: Entity,
+        enabled: bool,
+        graph: &Handle<AnimationGraph>,
+        commands: &mut Commands,
+    ) {
+        if enabled == self.evaluating {
+            return;
+        }
+        self.evaluating = enabled;
+        if enabled {
+            commands
+                .entity(animator)
+                .insert(AnimationGraphHandle(graph.clone()));
+        } else {
+            commands.entity(animator).remove::<AnimationGraphHandle>();
+        }
+    }
+}
+
+#[derive(Default)]
+struct Fade {
+    from: Vec<(AnimationNodeIndex, f32)>,
+    time_left: f32,
+    duration: f32,
+}
+
+impl Fade {
+    fn start(&mut self, player: &mut AnimationPlayer, node: AnimationNodeIndex, duration: f32) {
+        self.from.clear();
+        if duration > 0.0 {
+            self.from.extend(
+                player
+                    .playing_animations()
+                    .map(|(index, animation)| (*index, animation.weight()))
+                    .filter(|(_, weight)| *weight > 0.001),
+            );
+        }
+        self.duration = duration;
+        self.time_left = duration;
+        if self.from.is_empty() {
+            player.stop_all();
+        }
+        let initial = if self.from.is_empty() {
+            1.0
+        } else {
+            self.from
+                .iter()
+                .find(|(index, _)| *index == node)
+                .map_or(0.0, |(_, w)| *w)
+        };
+        player.start(node).pause().set_weight(initial);
+    }
+
+    fn advance(&mut self, player: &mut AnimationPlayer, node: AnimationNodeIndex, dt: f32) {
+        if self.from.is_empty() || dt <= 0.0 {
+            return;
+        }
+        self.time_left = (self.time_left - dt).max(0.0);
+        let linear = 1.0 - self.time_left / self.duration;
+        let incoming = linear * linear * (3.0 - 2.0 * linear);
+        let mut weight = incoming;
+        for (index, old) in self.from.iter().copied() {
+            if index == node {
+                weight += old * (1.0 - incoming);
+            } else if self.time_left == 0.0 {
+                player.stop(index);
+            } else if let Some(outgoing) = player.animation_mut(index) {
+                outgoing.set_weight(old * (1.0 - incoming));
+            }
+        }
+        if let Some(current) = player.animation_mut(node) {
+            current.set_weight(weight);
+        }
+        if self.time_left == 0.0 {
+            self.from.clear();
+        }
+    }
 }
 
 #[derive(Component)]
@@ -253,13 +344,26 @@ pub(super) fn finish_import(
         let mut graphs = animation.1;
         let (graph, nodes) =
             AnimationGraph::from_clips(ordered.iter().map(|(_, clip)| (*clip).clone()));
+        let manifest = ClipMotion::load().unwrap_or_else(|error| {
+            warn!("Metadados da Presença inválidos: {error}");
+            Vec::new()
+        });
         let clips = ordered
             .into_iter()
             .zip(nodes)
-            .map(|((label, clip), node)| Clip {
-                label: label.to_string(),
-                duration: animation.0.get(clip).map_or(0.0, AnimationClip::duration),
-                node,
+            .map(|((label, clip), node)| {
+                let duration = animation.0.get(clip).map_or(0.0, AnimationClip::duration);
+                let motion = manifest
+                    .iter()
+                    .find(|meta| meta.label == **label && (meta.duration - duration).abs() < 0.001)
+                    .cloned()
+                    .unwrap_or_else(|| ClipMotion::legacy(label));
+                Clip {
+                    label: label.to_string(),
+                    duration,
+                    motion,
+                    node,
+                }
             })
             .collect();
         info!(
@@ -590,6 +694,9 @@ type PartControls<'w, 's> = Query<
     ),
 >;
 
+type SeatView<'w, 's> =
+    Query<'w, 's, (&'static mut Visibility, &'static mut Transform), (With<Seat>, Without<Viewer>)>;
+
 pub(super) fn sync(
     mut commands: Commands,
     lab: Res<Lab>,
@@ -597,8 +704,24 @@ pub(super) fn sync(
     catalog: Res<Catalog>,
     mut viewers: Query<(Entity, &Viewer, &ChildOf, &mut Transform, &mut Visibility), Without<Part>>,
     parts: PartControls,
+    mut seat: SeatView,
 ) {
     let Some(active) = &lab.active else { return };
+    if let Ok((mut shown, mut current)) = seat.get_mut(active.room.seat) {
+        let actor = config
+            .selected()
+            .filter(|actor| active.playback.seat && actor.visible);
+        shown.set_if_neq(if actor.is_some() {
+            Visibility::Inherited
+        } else {
+            Visibility::Hidden
+        });
+        if let Some(actor) = actor {
+            let mut pose = preview_transform(active, config.selected, config.selected, actor);
+            pose.translation = pose.transform_point(Vec3::new(0., 0., -0.199));
+            current.set_if_neq(pose);
+        }
+    }
     let mut found = BTreeSet::new();
     for (entity, viewer, parent, mut transform, mut visibility) in &mut viewers {
         let current = config.instances.get(viewer.index);
@@ -611,8 +734,7 @@ pub(super) fn sync(
         }
         found.insert(viewer.index);
         let spec = current.expect("instância conferida");
-        let mut pose = spec.transform();
-        pose.translation.y += FLOOR;
+        let pose = preview_transform(active, config.selected, viewer.index, spec);
         if *transform != pose {
             *transform = pose;
         }
@@ -635,8 +757,7 @@ pub(super) fn sync(
         {
             continue;
         }
-        let mut pose = spec.transform();
-        pose.translation.y += FLOOR;
+        let pose = preview_transform(active, config.selected, index, spec);
         let root = commands
             .spawn((
                 Name::new(spec.model.name()),
@@ -714,6 +835,24 @@ pub(super) fn sync(
             commands.entity(id).insert(MeshMaterial3d(desired.clone()));
         }
     }
+}
+
+fn preview_transform(
+    active: &super::Active,
+    selected: usize,
+    index: usize,
+    spec: &super::settings::ModelSpec,
+) -> Transform {
+    let mut pose = spec.transform();
+    pose.translation.y += FLOOR;
+    if index != selected || spec.model != Model::Presence {
+        return pose;
+    }
+    if let Some((position, yaw)) = active.playback.run.as_ref().and_then(motion::Run::path) {
+        return Transform::from_translation(position).with_rotation(Quat::from_rotation_y(yaw));
+    }
+    pose.translation += active.playback.offset;
+    pose
 }
 
 #[derive(PartialEq)]
@@ -912,6 +1051,9 @@ fn on_model_ready(
                 Player {
                     owner: ready.entity,
                     clip: usize::MAX,
+                    clock: Clock::default(),
+                    fade: Fade::default(),
+                    evaluating: true,
                 },
             ));
         }
@@ -922,58 +1064,170 @@ pub(super) fn animate(
     config: Res<Config>,
     catalog: Res<Catalog>,
     mut lab: ResMut<Lab>,
-    mut animators: Query<(&mut AnimationPlayer, &mut Player)>,
+    mut animators: Query<(Entity, &mut AnimationPlayer, &mut Player)>,
+    viewers: Query<&Viewer>,
+    time: Res<Time>,
+    (mut events, mut commands): (MessageWriter<MotionEvent>, Commands),
+) {
+    let (Some(active), Some(import)) = (&mut lab.active, &catalog.import) else {
+        return;
+    };
+    let observer = active.camera_transform(&config).translation;
+    let controls = &mut active.playback;
+    controls.seat = false;
+    let available = catalog.clips();
+    for (entity, mut player, mut state) in &mut animators {
+        let Ok(view) = viewers.get(state.owner) else {
+            continue;
+        };
+        if view.revision != catalog.revision {
+            continue;
+        }
+        let Some(spec) = config.instances.get(view.index) else {
+            continue;
+        };
+        let selected = view.index == config.selected;
+        let staged = controls.run.as_ref().filter(|_| selected);
+        let rewind = selected && std::mem::take(&mut controls.rewind);
+        if rewind {
+            controls.offset = Vec3::ZERO;
+        }
+        if rewind && staged.is_some() {
+            let mode = controls.run.as_ref().expect("demonstração ativa").mode;
+            controls.run = Some(motion::Run::new(mode));
+        }
+        let staged = controls.run.as_ref().filter(|_| selected);
+        let index = staged
+            .and_then(|run| catalog.number(run.current().0))
+            .unwrap_or_else(|| spec.clip.min(available.len().saturating_sub(1)));
+        let Some(clip) = available.get(index) else {
+            continue;
+        };
+        let changed = state.clip != index;
+        let mut evaluate = changed || rewind;
+        if changed || rewind {
+            let blend = if changed && selected && controls.running {
+                available.get(state.clip).map_or(0.0, |outgoing| {
+                    clip.motion.state.blend_seconds(outgoing.motion.state)
+                })
+            } else {
+                0.0
+            };
+            state.fade.start(&mut player, clip.node, blend);
+            state.clip = index;
+            state.clock = Clock::default();
+        }
+        if !selected {
+            state.evaluate(entity, evaluate, &import.graph, &mut commands);
+            continue;
+        }
+        controls.seat = matches!(clip.label.get(..2), Some("20" | "21"));
+        let seek_to = controls.seek.take().map(|f| clip.duration * f);
+        let step = f32::from(std::mem::take(&mut controls.step)) / clip.motion.fps.max(1.0);
+        let offset = step;
+        let duration = clip.duration;
+        let previous = state.clock.distance;
+        let mut finished = 0;
+        if seek_to.is_some() || offset != 0.0 {
+            if !state.fade.from.is_empty() {
+                state.fade.start(&mut player, clip.node, 0.0);
+                evaluate = true;
+            }
+            let next = seek_to.unwrap_or(state.clock.time) + offset;
+            state.clock.seek(next, &clip.motion, duration);
+        } else if controls.follow_gaze && controls.running && catalog.number(12) == Some(index) {
+            let target = motion::gaze_phase(spec.transform(), observer) * duration;
+            let dt = time.delta_secs() * controls.speed;
+            let difference = target - state.clock.time;
+            let next = if difference.abs() < 0.0001 {
+                target
+            } else {
+                state.clock.time + difference * (1.0 - (-4.0 * dt).exp())
+            };
+            state.clock.seek(next, &clip.motion, duration);
+            evaluate |= !state.fade.from.is_empty() && dt > 0.0;
+            state.fade.advance(&mut player, clip.node, dt);
+        } else if controls.running && !staged.is_some_and(|run| run.complete) {
+            let repeat = staged.map_or(controls.repeat, |run| run.cycles + 1 < run.current().1);
+            let dt = time.delta_secs() * controls.speed;
+            let dt = staged.map_or(dt, |run| {
+                dt.min(clip.duration * f32::from(run.current().1 - run.cycles) - state.clock.time)
+            });
+            let actor = state.owner;
+            finished = state
+                .clock
+                .advance(dt, &clip.motion, duration, repeat, |kind| {
+                    events.write(MotionEvent { actor, kind });
+                });
+            evaluate |= !state.fade.from.is_empty() && dt > 0.0;
+            state.fade.advance(&mut player, clip.node, dt);
+        }
+        if let Some(animation) = player.animation_mut(clip.node)
+            && animation.seek_time() != state.clock.time
+        {
+            animation.set_seek_time(state.clock.time);
+            evaluate = true;
+        }
+        state.evaluate(entity, evaluate, &import.graph, &mut commands);
+        if let Some(run) = &mut controls.run {
+            let delta = (state.clock.distance - previous) * controls.speed_scale;
+            run.translate(delta);
+            if finished > 0 {
+                run.finish_cycles(
+                    finished,
+                    controls.repeat && run.mode == motion::Mode::Sequence,
+                );
+                if run.complete {
+                    controls.running = false;
+                }
+            }
+        } else if controls.displacement && spec.visible {
+            let pose = spec.transform();
+            let delta = (state.clock.distance - previous) * controls.speed_scale * spec.scale;
+            let direction = (pose.rotation * clip.motion.direction.vector()).with_y(0.0);
+            let proposed = pose.translation + controls.offset + delta * direction;
+            let size = clip
+                .motion
+                .posture
+                .dimensions(motion::phase(state.clock.time, duration))
+                * spec.scale;
+            let bounds = Aabb::from_center_size(proposed + Vec3::Y * (size.y * 0.5 + 0.041), size);
+            let crosses_room = active
+                .room
+                .solids
+                .iter()
+                .skip(1)
+                .any(|solid| solid.overlaps(bounds));
+            if proposed.x.abs() <= 7.6 && (-16.1..=5.05).contains(&proposed.z) && !crosses_room {
+                controls.offset = proposed - pose.translation;
+            }
+            if finished > 0 && !controls.repeat {
+                controls.running = false;
+            }
+        } else {
+            controls.offset = Vec3::ZERO;
+            if finished > 0 && !controls.repeat {
+                controls.running = false;
+            }
+        }
+    }
+}
+
+pub(super) fn remember_events(
+    mut events: MessageReader<MotionEvent>,
+    mut lab: ResMut<Lab>,
+    config: Res<Config>,
     viewers: Query<&Viewer>,
 ) {
     let Some(active) = &mut lab.active else {
         return;
     };
-    let controls = &mut active.playback;
-    let available = catalog.clips();
-    for (mut player, mut state) in &mut animators {
-        let Ok(view) = viewers.get(state.owner) else {
-            continue;
-        };
-        let Some(spec) = config.instances.get(view.index) else {
-            continue;
-        };
-        let index = spec.clip.min(available.len().saturating_sub(1));
-        let Some(clip) = available.get(index) else {
-            continue;
-        };
-        if state.clip != index {
-            player.stop_all().start(clip.node);
-            state.clip = index;
-        }
-        let Some(animation) = player.animation_mut(clip.node) else {
-            continue;
-        };
-        if view.index != config.selected {
-            if !animation.is_paused() {
-                animation.pause();
-            }
-            continue;
-        }
-        if std::mem::take(&mut controls.rewind) {
-            animation.replay();
-        }
-        let seek_to = controls.seek.take().map(|f| clip.duration * f);
-        let offset = std::mem::take(&mut controls.seek_by);
-        if seek_to.is_some() || offset != 0.0 {
-            let next =
-                (seek_to.unwrap_or(animation.seek_time()) + offset).clamp(0.0, clip.duration);
-            animation.set_seek_time(next);
-        }
-        animation.set_repeat(if controls.repeat {
-            RepeatAnimation::Forever
-        } else {
-            RepeatAnimation::Never
-        });
-        animation.set_speed(controls.speed);
-        if controls.running {
-            animation.resume();
-        } else {
-            animation.pause();
+    for event in events.read() {
+        if viewers
+            .get(event.actor)
+            .is_ok_and(|view| view.index == config.selected)
+        {
+            active.playback.last_event = Some(event.kind);
         }
     }
 }
@@ -983,14 +1237,18 @@ pub(super) fn timeline(
     catalog: &Catalog,
     animators: &Query<(&AnimationPlayer, &Player)>,
     viewers: &Query<&Viewer>,
-) -> Option<(f32, f32)> {
+) -> Option<(usize, f32, f32)> {
     animators.iter().find_map(|(player, state)| {
         let view = viewers.get(state.owner).ok()?;
         if view.index != selected {
             return None;
         }
         let clip = catalog.clips().get(state.clip)?;
-        Some((player.animation(clip.node)?.seek_time(), clip.duration))
+        Some((
+            state.clip,
+            player.animation(clip.node)?.seek_time(),
+            clip.duration,
+        ))
     })
 }
 
@@ -1008,39 +1266,53 @@ type GuideMeshes<'w, 's> = Query<
 pub(super) fn guides(
     config: Res<Config>,
     catalog: Res<Catalog>,
+    lab: Res<Lab>,
     viewers: Query<(Entity, &Viewer, &GlobalTransform)>,
-    mesh_poses: Query<(&Part, &SkinnedMesh)>,
-    hierarchy: Query<(&GlobalTransform, Option<&ChildOf>)>,
+    rig: GuideRig,
     mut guides: GuideMeshes,
     mut meshes: ResMut<Assets<Mesh>>,
 ) {
-    for (_, guide, _, mut visible) in &mut guides {
+    let Some(active) = &lab.active else { return };
+    let selected = config.selected().filter(|s| s.visible).and_then(|spec| {
+        let (root, _, pose) = viewers
+            .iter()
+            .find(|(_, v, _)| v.index == config.selected)?;
+        Some((spec, root, pose))
+    });
+    let track = active
+        .playback
+        .run
+        .as_ref()
+        .is_some_and(|run| run.mode == motion::Mode::Track);
+    for (_, guide, asset, mut visible) in &mut guides {
         if *guide == Guide::Wire {
             continue;
         }
-        *visible = Visibility::Hidden;
-        if *guide == Guide::Bones && !config.skeleton {
+        if *guide == Guide::Track {
+            visible.set_if_neq(if track {
+                Visibility::Inherited
+            } else {
+                Visibility::Hidden
+            });
             continue;
         }
-    }
-    let Some(spec) = config.selected().filter(|s| s.visible) else {
-        return;
-    };
-    if !config.skeleton && !spec.bounds {
-        return;
-    }
-    let Some((root, _, pose)) = viewers.iter().find(|(_, v, _)| v.index == config.selected) else {
-        return;
-    };
-    for (_, guide, asset, mut visible) in &mut guides {
+        let Some((spec, root, pose)) = selected else {
+            visible.set_if_neq(Visibility::Hidden);
+            continue;
+        };
         let mut lines = Vec::new();
+        let clip = || {
+            let state = rig.players.iter().find(|p| p.owner == root)?;
+            let clip = catalog.clips().get(state.clip)?;
+            Some((&clip.motion, motion::phase(state.clock.time, clip.duration)))
+        };
         match guide {
             Guide::Bones if config.skeleton && spec.model == Model::Presence => {
-                for (_, skin) in mesh_poses.iter().filter(|(part, _)| part.owner == root) {
+                for (_, skin) in rig.meshes.iter().filter(|(part, _)| part.owner == root) {
                     for joint in &skin.joints {
-                        if let Ok((child, Some(parent))) = hierarchy.get(*joint)
+                        if let Ok((child, Some(parent), _)) = rig.hierarchy.get(*joint)
                             && skin.joints.contains(&parent.parent())
-                            && let Ok((parent, _)) = hierarchy.get(parent.parent())
+                            && let Ok((parent, ..)) = rig.hierarchy.get(parent.parent())
                         {
                             lines.extend([
                                 child.translation().to_array(),
@@ -1050,16 +1322,56 @@ pub(super) fn guides(
                     }
                 }
             }
-            Guide::Bounds if spec.bounds && spec.model != Model::Presence => {
-                if let Some(record) = catalog.record(spec.model) {
+            Guide::Bounds if spec.bounds => {
+                if spec.model == Model::Presence {
+                    if let Some((motion, phase)) = clip() {
+                        let size = motion.posture.dimensions(phase);
+                        bounds_lines(
+                            &mut lines,
+                            pose,
+                            Aabb::from_center_size(Vec3::Y * size.y * 0.5, size),
+                        );
+                    }
+                } else if let Some(record) = catalog.record(spec.model) {
                     for collider in &record.colliders {
-                        let points =
-                            corners(*collider).map(|point| pose.transform_point(point).to_array());
-                        for i in 0..8 {
-                            for axis in 0..3 {
-                                if i & (1 << axis) == 0 {
-                                    lines.extend([points[i], points[i | (1 << axis)]]);
+                        bounds_lines(&mut lines, pose, *collider);
+                    }
+                }
+            }
+            Guide::Planted | Guide::Lifted
+                if active.playback.contacts && spec.model == Model::Presence =>
+            {
+                if let Some((data, phase)) = clip() {
+                    let ground = pose.translation().y.min(FLOOR) + 0.008;
+                    let use_hands = matches!(
+                        data.posture,
+                        motion::Posture::Quad | motion::Posture::Fold | motion::Posture::Rise
+                    );
+                    for (_, skin) in rig.meshes.iter().filter(|(part, _)| part.owner == root) {
+                        for limb in Limb::ALL {
+                            if !use_hands && matches!(limb, Limb::HandLeft | Limb::HandRight)
+                                || data.grounded(limb, phase) != (*guide == Guide::Planted)
+                            {
+                                continue;
+                            }
+                            let joint = skin
+                                .joints
+                                .iter()
+                                .filter_map(|joint| rig.hierarchy.get(*joint).ok())
+                                .find(|(.., name)| {
+                                    name.is_some_and(|n| n.as_str() == limb.joint())
+                                });
+                            if let Some((joint, ..)) = joint {
+                                let end = joint.translation();
+                                let point = end.with_y(ground);
+                                let delta = 0.055;
+                                for axis in [Vec3::X, Vec3::Z] {
+                                    lines.extend([
+                                        (point - axis * delta).to_array(),
+                                        (point + axis * delta).to_array(),
+                                    ]);
                                 }
+                                lines.extend([point.to_array(), end.to_array()]);
                             }
                         }
                     }
@@ -1067,11 +1379,42 @@ pub(super) fn guides(
             }
             _ => {}
         }
-        if !lines.is_empty()
-            && let Some(mesh) = meshes.get_mut(&asset.0)
-        {
-            mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, lines);
-            *visible = Visibility::Inherited;
+        if lines.is_empty() {
+            visible.set_if_neq(Visibility::Hidden);
+        } else {
+            let unchanged = meshes.get(&asset.0).is_some_and(|mesh| {
+                matches!(mesh.attribute(Mesh::ATTRIBUTE_POSITION), Some(VertexAttributeValues::Float32x3(previous)) if *previous == lines)
+            });
+            if !unchanged && let Some(mesh) = meshes.get_mut(&asset.0) {
+                mesh.insert_attribute(Mesh::ATTRIBUTE_POSITION, lines);
+            }
+            visible.set_if_neq(Visibility::Inherited);
+        }
+    }
+}
+
+#[derive(bevy::ecs::system::SystemParam)]
+pub(super) struct GuideRig<'w, 's> {
+    meshes: Query<'w, 's, (&'static Part, &'static SkinnedMesh)>,
+    hierarchy: Query<
+        'w,
+        's,
+        (
+            &'static GlobalTransform,
+            Option<&'static ChildOf>,
+            Option<&'static Name>,
+        ),
+    >,
+    players: Query<'w, 's, &'static Player>,
+}
+
+fn bounds_lines(lines: &mut Vec<[f32; 3]>, pose: &GlobalTransform, collider: Aabb) {
+    let points = corners(collider).map(|point| pose.transform_point(point).to_array());
+    for i in 0..8 {
+        for axis in 0..3 {
+            if i & (1 << axis) == 0 {
+                lines.extend([points[i], points[i | (1 << axis)]]);
+            }
         }
     }
 }

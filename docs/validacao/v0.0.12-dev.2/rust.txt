@@ -1,0 +1,13 @@
+cargo fmt --all -- --check — PASS
+cargo clippy --locked --offline --workspace --all-targets --all-features -- -D warnings — PASS
+cargo build --locked --offline -p ainda-vivo --features dev-lab — PASS
+cargo check --locked --offline -p ainda-vivo --no-default-features — PASS
+test lab::motion::tests::gaze_uses_the_body_basis_and_comes_to_rest_when_observer_is_behind ... ok
+test lab::motion::tests::track_preserves_tangent_and_approach_has_clearance ... ok
+test lab::motion::tests::clock_steps_and_speeds_agree_and_scrubbing_emits_nothing ... ok
+test lab::motion::tests::one_shot_finishes_once_and_postures_have_continuous_dimensions ... ok
+test lab::motion::tests::manifest_has_ordered_in_range_contacts_and_all_demo_clips ... ok
+test result: ok. 32 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
