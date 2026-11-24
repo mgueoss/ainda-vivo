@@ -1,13 +1,15 @@
 param(
     [Parameter(Mandatory)] [string]$OutputFile,
-    [string]$LicenseSourceDirectory = (Join-Path $PSScriptRoot 'licenses')
+    [string]$LicenseSourceDirectory = (Join-Path $PSScriptRoot 'licenses'),
+    [string[]]$Features = @()
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 $root = (Resolve-Path (Join-Path $PSScriptRoot '../..')).ProviderPath
 Push-Location -LiteralPath $root
 try {
-    $metadata = cargo metadata --locked --offline --filter-platform x86_64-pc-windows-msvc --format-version 1
+    $featureArgs = if ($Features.Count -gt 0) { @('--features', ($Features -join ',')) } else { @() }
+    $metadata = cargo metadata --locked --offline --filter-platform x86_64-pc-windows-msvc --format-version 1 @featureArgs
     if ($LASTEXITCODE -ne 0) { throw 'Não foi possível consultar as dependências no cache Cargo.' }
     $metadata = $metadata | ConvertFrom-Json -Depth 100
     $toolchain = rustc --print sysroot

@@ -40,6 +40,8 @@ pub struct SmokeTest {
     pub reality: bool,
     pub echoes: bool,
     pub menu: bool,
+    #[cfg(feature = "dev-lab")]
+    pub lab: bool,
     pub check_audio: bool,
     frame: u32,
     paused_position: Vec3,
@@ -76,14 +78,18 @@ impl SmokeTest {
         let menu = !collapse && args.iter().any(|a| a == "--smoke-menu");
         let echoes = !collapse && !menu && args.iter().any(|a| a == "--smoke-echoes");
         let reality = !collapse && !menu && !echoes && args.iter().any(|a| a == "--smoke-reality");
+        let lab = cfg!(feature = "dev-lab") && args.iter().any(|a| a == "--smoke-lab");
         Self {
-            enabled: collapse
+            enabled: lab
+                || collapse
                 || menu
                 || echoes
                 || reality
                 || args.iter().any(|a| a == "--smoke-test"),
             collapse,
             menu,
+            #[cfg(feature = "dev-lab")]
+            lab,
             reality,
             echoes,
             check_audio: args.iter().any(|a| a == "--check-audio"),
@@ -217,6 +223,10 @@ pub fn drive(
     mut commands: Commands,
     exit: MessageWriter<AppExit>,
 ) {
+    #[cfg(feature = "dev-lab")]
+    if smoke.lab {
+        return;
+    }
     if !smoke.enabled || smoke.reality || smoke.echoes || smoke.menu || smoke.collapse {
         return;
     }

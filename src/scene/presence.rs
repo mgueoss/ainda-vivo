@@ -8,8 +8,8 @@ use crate::{
 use ainda_vivo_core::story::{Phase, Progress};
 use bevy::{light::NotShadowCaster, prelude::*};
 
-pub(super) const WIDTH: f32 = 1.56;
-pub(super) const HEIGHT: f32 = 2.48;
+pub(crate) const WIDTH: f32 = 1.56;
+pub(crate) const HEIGHT: f32 = 2.48;
 const MIN_DISTANCE: f32 = 6.4;
 const MAX_DISTANCE: f32 = 14.3;
 const FADE_IN: f32 = 0.44;

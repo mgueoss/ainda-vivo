@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.0.12-dev.1 — A Presença e Dev Lab
+
+- Primeira malha original da Presença, esculpida em Blender. O arquivo editável inclui rig, pesos, texturas PBR e poses de inspeção, entre elas o apoio quadrúpede e a despedida.
+- Sala interna com catálogo, comparação de modelos, colisores, esqueleto, wireframe, câmeras, cinco luzes predefinidas e player de clipes.
+- Acesso de desenvolvimento com `Ctrl+I`. A sessão da Estação é suspensa durante a inspeção. A prévia passiva na campanha tem um parâmetro próprio.
+- Build experimental da Etapa 1. [Dev Lab e atalhos](docs/DEV-LAB.md) · [Handoff](AINDA-VIVO-HANDOFF-v0.0.12-dev.1.md)
+
 ## v0.0.11 — Colapso
 
 - Seis níveis psicológicos com adaptação a estímulos repetidos, histórico por operador e uma janela crítica recuperável.

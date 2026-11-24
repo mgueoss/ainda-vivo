@@ -1,6 +1,6 @@
 [package]
 name = "ainda-vivo"
-version = "0.0.11"
+version = "0.0.12-dev.1"
 edition = "2024"
 rust-version = "1.89"
 publish = false
@@ -10,8 +10,18 @@ description = "AINDA VIVO — protótipo Windows em primeira pessoa"
 members = ["crates/ainda_vivo_core", "crates/ainda_vivo_launcher"]
 resolver = "3"
 
+[features]
+dev-lab = [
+    "bevy/bevy_gltf", "bevy/bevy_animation", "bevy/png", "bevy/reflect_auto_register",
+    "dep:bevy_gltf", "dep:serde", "dep:serde_json"
+]
+
 [dependencies]
 ainda_vivo_core = { path = "crates/ainda_vivo_core" }
+serde = { version = "1", features = ["derive"], optional = true }
+serde_json = { version = "1", optional = true }
+# Enable skeletal clips in the loader as well as in the engine's animation plugin.
+bevy_gltf = { version = "=0.18.1", default-features = false, features = ["bevy_animation"], optional = true }
 zune-jpeg = { version = "=0.5.15", default-features = false, features = ["std"] }
 bevy = { version = "=0.18.1", default-features = false, features = [
     "std", "async_executor", "multi_threaded", "bevy_asset", "bevy_log",

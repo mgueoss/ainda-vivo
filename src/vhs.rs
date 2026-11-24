@@ -80,6 +80,13 @@ pub struct VhsImage {
 }
 
 impl VhsImage {
+    #[cfg(feature = "dev-lab")]
+    pub fn lab(mode: VhsMode, time: f32) -> Self {
+        Self {
+            parameters: Vec4::new(mode.strength(), time, 0.0, 0.0),
+        }
+    }
+
     pub fn archive() -> Self {
         Self {
             parameters: Vec4::new(0.54, 37.0, 0.0, 0.0),

@@ -5,6 +5,8 @@ mod atmosphere;
 mod desktop;
 mod diagnostics;
 mod interaction;
+#[cfg(feature = "dev-lab")]
+mod lab;
 mod preferences;
 mod psychology;
 mod reality;

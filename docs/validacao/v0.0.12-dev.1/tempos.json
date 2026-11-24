@@ -1,0 +1,51 @@
+[
+  {
+    "Scenario": "realidade-011-a",
+    "Seconds": 18.102,
+    "Frames": "frames: 2696",
+    "Adapter": "2026-11-24T20:47:38.465063Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }",
+    "ExitCode": 0
+  },
+  {
+    "Scenario": "realidade-dev-a",
+    "Seconds": 17.53,
+    "Frames": "frames: 2696",
+    "Adapter": "2026-11-24T20:47:56.100930Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }",
+    "ExitCode": 0
+  },
+  {
+    "Scenario": "realidade-dev-b",
+    "Seconds": 17.483,
+    "Frames": "frames: 2696",
+    "Adapter": "2026-11-24T20:48:13.675550Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }",
+    "ExitCode": 0
+  },
+  {
+    "Scenario": "realidade-011-b",
+    "Seconds": 17.397,
+    "Frames": "frames: 2696",
+    "Adapter": "2026-11-24T20:48:31.124340Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }",
+    "ExitCode": 0
+  },
+  {
+    "Scenario": "vistoria-dev",
+    "Seconds": 75.35,
+    "Frames": "frames: 12260",
+    "Adapter": "2026-11-24T20:48:48.525063Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }",
+    "ExitCode": 0
+  },
+  {
+    "Scenario": "ecos-dev",
+    "Seconds": 17.546,
+    "Frames": "frames: 2735",
+    "Adapter": "2026-11-24T20:50:03.874433Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }",
+    "ExitCode": 0
+  },
+  {
+    "Scenario": "colapso-dev",
+    "Seconds": 52.798,
+    "Frames": "frames: 8545",
+    "Adapter": "2026-11-24T20:50:21.424475Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }",
+    "ExitCode": 0
+  }
+]

@@ -47,6 +47,8 @@ O jogo pausa ao perder o foco. Fechar a janela encerra o programa. O menu permit
 
 ## Desenvolvimento
 
+A Etapa 1 da v0.0.12 está na build experimental `v0.0.12-dev.1`. Ela inclui a Presença 3D e o ambiente de inspeção interno. A versão recomendada para jogar continua sendo a v0.0.11. [Guia do Dev Lab](docs/DEV-LAB.md) · [Handoff da Etapa 1](AINDA-VIVO-HANDOFF-v0.0.12-dev.1.md)
+
 Requisitos: Windows x64, Rust estável com Cargo, Visual Studio C++ Build Tools e Windows SDK. O ambiente original tem Rust/Cargo 1.97.1 e Visual Studio 2022 Community. Não é necessário instalar Blender para esta versão.
 
 Na pasta do projeto, usando PowerShell:

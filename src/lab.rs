@@ -1,0 +1,842 @@
+mod library;
+mod panel;
+mod qa;
+mod room;
+mod settings;
+
+use crate::{
+    app::{Comfort, MainCamera},
+    preferences::Preferences,
+    scene::recording::ArchiveCamera,
+};
+use ainda_vivo_core::movement::PlayerBody;
+use bevy::{
+    asset::{
+        AssetApp,
+        io::{AssetSourceBuilder, embedded::EmbeddedAssetRegistry, file::FileAssetReader},
+    },
+    audio::AudioSinkPlayback,
+    camera::visibility::VisibilitySystems,
+    input::{
+        InputSystems,
+        mouse::{AccumulatedMouseMotion, AccumulatedMouseScroll},
+    },
+    prelude::*,
+    render::view::screenshot::{Screenshot, save_to_disk},
+    transform::TransformSystems,
+    window::{CursorGrabMode, CursorOptions, PrimaryWindow},
+};
+use room::{Room, walker};
+use settings::{Config, Lens, Lighting, Model, ModelSpec, Preset, Tab};
+use std::{
+    collections::HashSet,
+    path::{Path, PathBuf},
+};
+
+const EMBEDDED_PATH: &str = "ainda_vivo/presenca.glb";
+
+#[derive(Clone, Default, Resource)]
+pub(super) struct Options {
+    pub(super) enabled: bool,
+    preview_station: bool,
+    source: Option<PathBuf>,
+    settings: Option<PathBuf>,
+    smoke: bool,
+    captures: Option<PathBuf>,
+}
+
+impl Options {
+    pub(super) fn from_args() -> Self {
+        let args: Vec<_> = std::env::args_os().collect();
+        let has = |key| args.iter().any(|arg| arg == key);
+        let value = |key| {
+            args.windows(2)
+                .find(|pair| pair[0] == key)
+                .map(|pair| PathBuf::from(&pair[1]))
+        };
+        let smoke = has("--smoke-lab");
+        let enabled = has("--dev-lab") || smoke;
+        let local =
+            std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("AindaVivo/dev-lab"));
+        Self {
+            enabled,
+            preview_station: enabled && (smoke || has("--lab-campaign-preview")),
+            source: enabled.then(|| value("--lab-assets")).flatten(),
+            settings: value("--lab-config").or_else(|| {
+                (!smoke)
+                    .then(|| local.as_ref().map(|p| p.join("settings.json")))
+                    .flatten()
+            }),
+            captures: value("--capture-dir").or_else(|| {
+                (!smoke)
+                    .then(|| local.as_ref().map(|p| p.join("captures")))
+                    .flatten()
+            }),
+            smoke,
+        }
+    }
+
+    pub(super) fn configure_source(&self, app: &mut App) {
+        if let Some(directory) = &self.source {
+            let root = std::path::absolute(directory).unwrap_or_else(|_| directory.clone());
+            app.register_asset_source(
+                "lab",
+                AssetSourceBuilder::new(move || Box::new(FileAssetReader::new(&root))),
+            );
+        }
+    }
+
+    fn path(&self) -> &'static str {
+        if self.source.is_some() {
+            "lab://models/presenca.glb"
+        } else {
+            "embedded://ainda_vivo/presenca.glb"
+        }
+    }
+}
+
+pub(super) struct LabPlugin;
+
+impl Plugin for LabPlugin {
+    fn build(&self, app: &mut App) {
+        let settings = app.world().resource::<Options>().settings.as_deref();
+        let (config, status) = match settings {
+            Some(path) if path.is_file() => match Config::load(path) {
+                Ok(config) => (config, "Configuração local carregada.".into()),
+                Err(error) => (
+                    Config::default(),
+                    format!("Configuração inválida. Padrões carregados. {error}"),
+                ),
+            },
+            _ => (Config::default(), "Sala de inspeção pronta.".into()),
+        };
+        app.world()
+            .resource::<EmbeddedAssetRegistry>()
+            .insert_asset(
+                PathBuf::from(file!()),
+                Path::new(EMBEDDED_PATH),
+                include_bytes!("../assets/models/presenca.glb").as_slice(),
+            );
+        app.insert_resource(config)
+            .insert_resource(Lab {
+                status,
+                ..default()
+            })
+            .init_resource::<library::Catalog>()
+            .add_message::<Action>()
+            .add_systems(Startup, library::begin_import)
+            .add_systems(
+                PreUpdate,
+                (qa::inject_keys, switch.in_set(crate::app::BeforeCampaign))
+                    .chain()
+                    .after(InputSystems),
+            )
+            .add_systems(FixedUpdate, room::walk.run_if(active))
+            .add_systems(Update, library::finish_import)
+            .add_systems(
+                Update,
+                (
+                    panel::input,
+                    shortcuts,
+                    actions,
+                    camera_input,
+                    library::sync,
+                    library::animate,
+                    room::present,
+                    hold_campaign_audio,
+                    panel::refresh,
+                    cursor,
+                )
+                    .chain()
+                    .run_if(active),
+            )
+            .add_systems(
+                PostUpdate,
+                (library::guides, library::wire_guides)
+                    .chain()
+                    .after(TransformSystems::Propagate)
+                    .before(VisibilitySystems::VisibilityPropagate)
+                    .run_if(active),
+            )
+            .add_systems(Last, qa::verify);
+        if app.world().resource::<Options>().smoke {
+            app.insert_resource(qa::Check::from_args());
+        }
+    }
+}
+
+#[derive(Resource, Default)]
+pub(super) struct Lab {
+    active: Option<Active>,
+    parked: Option<(Entity, Entity, Room)>,
+    resume_hold: bool,
+    search_focus: bool,
+    status: String,
+}
+
+struct Active {
+    root: Entity,
+    interface: Entity,
+    room: Room,
+    suspended_cameras: Vec<(Entity, bool)>,
+    resume_audio: HashSet<Entity>,
+    captured: bool,
+    look_armed: bool,
+    jump: bool,
+    walker: PlayerBody,
+    eye: f32,
+    orbit: Option<Orbit>,
+    playback: Playback,
+}
+
+#[derive(Clone, Copy)]
+struct Orbit {
+    target: Vec3,
+    radius: f32,
+}
+
+struct Playback {
+    running: bool,
+    repeat: bool,
+    speed: f32,
+    seek_by: f32,
+    rewind: bool,
+    seek: Option<f32>,
+}
+
+impl Default for Playback {
+    fn default() -> Self {
+        Self {
+            running: false,
+            repeat: true,
+            speed: 1.0,
+            seek_by: 0.0,
+            rewind: false,
+            seek: None,
+        }
+    }
+}
+
+impl Active {
+    fn reset_view(&mut self, lens: &Lens) {
+        self.walker =
+            walker(Vec3::from(lens.position).with_y((lens.position[1] - 1.62).max(0.002)));
+        self.eye = 1.62;
+        self.orbit = None;
+        self.look_armed = false;
+        self.jump = false;
+    }
+
+    fn camera_transform(&self, config: &Config) -> Transform {
+        let lens = &config.lens;
+        let orientation = Quat::from_rotation_y(lens.yaw) * Quat::from_rotation_x(lens.pitch);
+        let translation = if let Some(orbit) = self.orbit {
+            orbit.target + orientation * Vec3::Z * orbit.radius
+        } else if lens.free {
+            Vec3::from(lens.position)
+        } else {
+            self.walker.feet + Vec3::Y * self.eye
+        };
+        Transform::from_translation(translation).with_rotation(orientation)
+    }
+
+    fn set_free(&mut self, lens: &mut Lens, free: bool) {
+        if free == lens.free {
+            return;
+        }
+        lens.free = free;
+        if free {
+            lens.position = (self.walker.feet + Vec3::Y * self.eye).to_array();
+        }
+        if let Some(orbit) = self.orbit.take()
+            && free
+        {
+            lens.position = (orbit.target
+                + Quat::from_euler(EulerRot::YXZ, lens.yaw, lens.pitch, 0.0)
+                    * Vec3::Z
+                    * orbit.radius)
+                .to_array();
+        }
+        self.look_armed = false;
+    }
+}
+
+pub(super) fn campaign_running(lab: Option<Res<Lab>>) -> bool {
+    lab.is_none_or(|lab| lab.active.is_none() && !lab.resume_hold)
+}
+
+fn active(lab: Res<Lab>) -> bool {
+    lab.active.is_some()
+}
+
+fn ctrl(keys: &ButtonInput<KeyCode>) -> bool {
+    keys.any_pressed([KeyCode::ControlLeft, KeyCode::ControlRight])
+}
+
+fn shift(keys: &ButtonInput<KeyCode>) -> bool {
+    keys.any_pressed([KeyCode::ShiftLeft, KeyCode::ShiftRight])
+}
+
+fn chord_down(keys: &ButtonInput<KeyCode>) -> bool {
+    keys.any_pressed([
+        KeyCode::KeyI,
+        KeyCode::KeyH,
+        KeyCode::KeyG,
+        KeyCode::KeyL,
+        KeyCode::KeyB,
+        KeyCode::KeyW,
+        KeyCode::KeyP,
+        KeyCode::KeyR,
+        KeyCode::KeyF,
+        KeyCode::KeyS,
+    ])
+}
+
+type CampaignCameras<'w, 's> =
+    Query<'w, 's, (Entity, &'static mut Camera), Or<(With<MainCamera>, With<ArchiveCamera>)>>;
+type LabCameraSwitch<'w, 's> = Query<
+    'w,
+    's,
+    &'static mut Camera,
+    (
+        With<room::LabCamera>,
+        Without<MainCamera>,
+        Without<ArchiveCamera>,
+    ),
+>;
+
+#[derive(bevy::ecs::system::SystemParam)]
+struct Views<'w, 's> {
+    campaign: CampaignCameras<'w, 's>,
+    lab: LabCameraSwitch<'w, 's>,
+    interface: Query<'w, 's, &'static mut Node, With<panel::Interface>>,
+    models: Query<'w, 's, Entity, With<library::Viewer>>,
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Campaign camera and sink snapshots are distinct."
+)]
+fn switch(
+    mut commands: Commands,
+    keys: Res<ButtonInput<KeyCode>>,
+    options: Res<Options>,
+    config: Res<Config>,
+    mut lab: ResMut<Lab>,
+    mut views: Views,
+    audio: Query<(Entity, &AudioSink)>,
+    mut meshes: ResMut<Assets<Mesh>>,
+    mut materials: ResMut<Assets<StandardMaterial>>,
+) {
+    if lab.resume_hold && !ctrl(&keys) && !keys.pressed(KeyCode::KeyI) {
+        lab.resume_hold = false;
+    }
+    if lab.search_focus || !ctrl(&keys) || !keys.just_pressed(KeyCode::KeyI) {
+        return;
+    }
+    if let Some(old) = lab.active.take() {
+        for model in &views.models {
+            commands.entity(model).despawn();
+        }
+        commands.entity(old.root).insert(Visibility::Hidden);
+        if let Ok(mut camera) = views.lab.get_mut(old.room.camera) {
+            camera.is_active = false;
+        }
+        if let Ok(mut node) = views.interface.get_mut(old.interface) {
+            node.display = Display::None;
+        }
+        for (id, was_active) in old.suspended_cameras {
+            if let Ok((_, mut camera)) = views.campaign.get_mut(id) {
+                camera.is_active = was_active;
+            }
+        }
+        for id in old.resume_audio {
+            if let Ok((_, sink)) = audio.get(id) {
+                sink.play();
+            }
+        }
+        lab.parked = Some((old.root, old.interface, old.room));
+        lab.resume_hold = !options.smoke;
+        return;
+    }
+    let (root, interface, room) = if let Some((root, interface, room)) = lab.parked.take() {
+        commands.entity(root).insert(Visibility::Inherited);
+        if let Ok(mut camera) = views.lab.get_mut(room.camera) {
+            camera.is_active = true;
+        }
+        (root, interface, room)
+    } else {
+        let root = commands
+            .spawn((
+                Name::new("Dev Lab"),
+                Transform::default(),
+                Visibility::Inherited,
+            ))
+            .id();
+        let room = room::spawn(&mut commands, root, &mut meshes, &mut materials);
+        let interface = panel::spawn(&mut commands, room.camera, &config);
+        (root, interface, room)
+    };
+    let mut suspended_cameras = Vec::new();
+    for (entity, mut camera) in &mut views.campaign {
+        suspended_cameras.push((entity, camera.is_active));
+        camera.is_active = false;
+    }
+    let resume_audio = audio
+        .iter()
+        .filter(|(_, sink)| !sink.is_paused())
+        .map(|(entity, sink)| {
+            sink.pause();
+            entity
+        })
+        .collect();
+    let mut current = Active {
+        root,
+        interface,
+        room,
+        suspended_cameras,
+        resume_audio,
+        captured: false,
+        look_armed: false,
+        jump: false,
+        walker: PlayerBody::default(),
+        eye: 1.62,
+        orbit: None,
+        playback: Playback::default(),
+    };
+    current.reset_view(&config.lens);
+    lab.active = Some(current);
+}
+
+fn hold_campaign_audio(mut lab: ResMut<Lab>, audio: Query<(Entity, &AudioSink), Added<AudioSink>>) {
+    if let Some(active) = &mut lab.active {
+        for (id, sink) in &audio {
+            if !sink.is_paused() {
+                sink.pause();
+                active.resume_audio.insert(id);
+            }
+        }
+    }
+}
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+enum Knob {
+    Translation(usize),
+    Angles(usize),
+    Scale,
+    Key,
+    Fill,
+    Azimuth,
+    Elevation,
+    Exposure,
+    Fov,
+    Speed,
+    Playback,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Message)]
+enum Action {
+    CaptureCursor,
+    SetTab(Tab),
+    Category,
+    Search,
+    Add(Model),
+    Select(usize),
+    Remove,
+    Duplicate,
+    Reload,
+    Compare,
+    ResetModel,
+    CenterModel,
+    Framing,
+    Orbit,
+    Face,
+    Hands,
+    Preset(Preset),
+    CycleLights,
+    Color,
+    Fog,
+    Shadows,
+    Torch,
+    Tape,
+    Grid,
+    Skeleton,
+    Wireframe,
+    Visible,
+    ModelShadow,
+    ModelBounds,
+    Material,
+    Clip(usize),
+    Play,
+    Repeat,
+    Rewind,
+    Seek(f32),
+    SeekFraction(f32),
+    Adjust(Knob, f32),
+    FreeCamera,
+    Reset,
+    Save,
+    Screenshot,
+    HideUi,
+}
+
+fn shortcuts(
+    keys: Res<ButtonInput<KeyCode>>,
+    bindings: Res<Preferences>,
+    options: Res<Options>,
+    lab: Res<Lab>,
+    windows: Query<&Window, With<PrimaryWindow>>,
+    mut actions: MessageWriter<Action>,
+) {
+    if options.smoke || lab.search_focus || !windows.single().is_ok_and(|window| window.focused) {
+        return;
+    }
+    if ctrl(&keys) {
+        for (key, action) in [
+            (KeyCode::KeyH, Action::HideUi),
+            (KeyCode::KeyG, Action::Grid),
+            (KeyCode::KeyL, Action::CycleLights),
+            (KeyCode::KeyB, Action::Skeleton),
+            (KeyCode::KeyW, Action::Wireframe),
+            (KeyCode::KeyP, Action::Play),
+            (KeyCode::KeyR, Action::Reset),
+            (KeyCode::KeyF, Action::FreeCamera),
+        ] {
+            if keys.just_pressed(key) {
+                actions.write(action);
+            }
+        }
+        if shift(&keys) && keys.just_pressed(KeyCode::KeyS) {
+            actions.write(Action::Screenshot);
+        }
+    } else if keys.just_pressed(KeyCode::Tab)
+        || (keys.just_pressed(KeyCode::Escape) && lab.active.as_ref().is_some_and(|a| a.captured))
+    {
+        actions.write(Action::CaptureCursor);
+    } else if lab.active.as_ref().is_some_and(|current| current.captured)
+        && keys.just_pressed(bindings.key("flashlight", KeyCode::KeyF))
+    {
+        actions.write(Action::Torch);
+    }
+}
+
+fn actions(
+    mut actions: MessageReader<Action>,
+    mut config: ResMut<Config>,
+    mut lab: ResMut<Lab>,
+    catalog: Res<library::Catalog>,
+    assets: Res<AssetServer>,
+    options: Res<Options>,
+    mut commands: Commands,
+) {
+    for action in actions.read().copied() {
+        let Some(active) = lab.active.as_mut() else {
+            break;
+        };
+        match action {
+            Action::CaptureCursor => {
+                active.captured = !active.captured;
+                active.look_armed = false;
+                lab.search_focus = false;
+            }
+            Action::Search => {
+                lab.search_focus = true;
+            }
+            Action::SetTab(tab) => {
+                config.tab = tab;
+            }
+            Action::Category => {
+                let next = (config.category as usize + 1) % settings::Category::ALL.len();
+                config.category = settings::Category::ALL[next].0;
+            }
+            Action::Select(index) => {
+                if index < config.instances.len() {
+                    config.selected = index;
+                    active.playback = Playback::default();
+                }
+            }
+            Action::Remove => {
+                config.remove();
+            }
+            Action::Add(model) => {
+                let spot = config.next_spot();
+                if !config.append(ModelSpec::new(model, spot)) {
+                    lab.status = format!("Limite de {} instâncias.", settings::MAX_INSTANCES);
+                }
+            }
+            Action::Duplicate => {
+                if let Some(mut copy) = config.selected().cloned() {
+                    copy.position = config.next_spot().into();
+                    if !config.append(copy) {
+                        lab.status = "Limite de instâncias.".into();
+                    }
+                }
+            }
+            Action::Compare => {
+                config.instances = [Model::Presence, Model::Legacy, Model::Human]
+                    .into_iter()
+                    .enumerate()
+                    .map(|(i, model)| ModelSpec::new(model, Vec3::X * (i as f32 - 1.0) * 1.13))
+                    .collect();
+                config.selected = 0;
+                config.lens = Lens::default();
+                active.reset_view(&config.lens);
+                active.playback = Playback::default();
+            }
+            Action::ResetModel => {
+                let index = config.selected;
+                if let Some(spec) = config.instances.get_mut(index) {
+                    *spec = ModelSpec::new(spec.model, Vec3::ZERO);
+                    active.playback = Playback::default();
+                }
+            }
+            Action::CenterModel => {
+                let index = config.selected;
+                if let Some(spec) = config.instances.get_mut(index) {
+                    spec.position = [0.; 3];
+                }
+            }
+            Action::Reload => {
+                if options.source.is_some() {
+                    catalog.reload(&assets);
+                    lab.status = "Recarregando o GLB externo.".into();
+                } else {
+                    lab.status = "GLB embutido. Use --lab-assets para recarregar do disco.".into();
+                }
+            }
+            Action::Orbit | Action::Framing | Action::Face | Action::Hands => {
+                if let Some(spec) = config.selected() {
+                    let height = catalog.height(spec.model);
+                    let mut target = Vec3::from(spec.position)
+                        + Vec3::Y * (room::FLOOR + height * spec.scale * 0.51);
+                    let mut radius = (height * spec.scale * 1.30).clamp(0.5, 16.0);
+                    if action == Action::Face && spec.model == Model::Presence {
+                        target = spec
+                            .transform()
+                            .transform_point(Vec3::new(-0.019, 2.053, 0.14))
+                            + Vec3::Y * room::FLOOR;
+                        radius = (0.55 * spec.scale).clamp(0.28, 4.0);
+                    } else if action == Action::Hands && spec.model == Model::Presence {
+                        target = spec
+                            .transform()
+                            .transform_point(Vec3::new(0.322, 0.855, 0.0))
+                            + Vec3::Y * room::FLOOR;
+                        radius = (0.56 * spec.scale).clamp(0.28, 4.0);
+                    }
+                    active.set_free(&mut config.lens, true);
+                    config.lens.yaw = 0.0;
+                    config.lens.pitch = if action == Action::Hands {
+                        -0.09
+                    } else {
+                        -0.05
+                    };
+                    if action == Action::Orbit {
+                        active.orbit = if active.orbit.is_some() {
+                            None
+                        } else {
+                            Some(Orbit { target, radius })
+                        };
+                    } else {
+                        active.orbit = None;
+                    }
+                    config.lens.position =
+                        (target + Vec3::Z * radius + Vec3::Y * (radius * 0.05)).into();
+                }
+            }
+            Action::Preset(preset) => config.lighting = preset.into(),
+            Action::CycleLights => config.lighting = config.lighting.preset.next().into(),
+            Action::Color => {
+                config.lighting.color = (config.lighting.color + 1) % Lighting::COLORS.len()
+            }
+            Action::Fog => config.lighting.fog = !config.lighting.fog,
+            Action::Shadows => config.lighting.shadow = !config.lighting.shadow,
+            Action::Torch => config.lighting.torch = !config.lighting.torch,
+            Action::Tape => config.lighting.vhs = (config.lighting.vhs + 1) % 3,
+            Action::Grid => config.grid = !config.grid,
+            Action::Skeleton => config.skeleton = !config.skeleton,
+            Action::Wireframe => config.wireframe = !config.wireframe,
+            Action::HideUi => config.hidden = !config.hidden,
+            Action::Visible
+            | Action::ModelShadow
+            | Action::ModelBounds
+            | Action::Material
+            | Action::Clip(_) => {
+                let index = config.selected;
+                if let Some(spec) = config.instances.get_mut(index) {
+                    match action {
+                        Action::Visible => spec.visible = !spec.visible,
+                        Action::ModelShadow => spec.shadow = !spec.shadow,
+                        Action::ModelBounds => spec.bounds = !spec.bounds,
+                        Action::Material => spec.surface = spec.surface.next(),
+                        Action::Clip(clip) => {
+                            spec.clip = clip;
+                            active.playback = Playback::default();
+                        }
+                        _ => unreachable!(),
+                    }
+                }
+            }
+            Action::Play => active.playback.running = !active.playback.running,
+            Action::Repeat => active.playback.repeat = !active.playback.repeat,
+            Action::Rewind => active.playback.rewind = true,
+            Action::Seek(seconds) => active.playback.seek_by += seconds,
+            Action::SeekFraction(fraction) => active.playback.seek = Some(fraction.clamp(0.0, 1.0)),
+            Action::Adjust(knob, delta) => {
+                let selected = config.selected;
+                match knob {
+                    Knob::Translation(axis) => {
+                        if let Some(spec) = config.instances.get_mut(selected) {
+                            spec.position[axis] += delta;
+                        }
+                    }
+                    Knob::Angles(axis) => {
+                        if let Some(spec) = config.instances.get_mut(selected) {
+                            spec.angles[axis] += delta;
+                        }
+                    }
+                    Knob::Scale => {
+                        if let Some(spec) = config.instances.get_mut(selected) {
+                            spec.scale += delta;
+                        }
+                    }
+                    Knob::Key => config.lighting.key += delta,
+                    Knob::Fill => config.lighting.fill += delta,
+                    Knob::Azimuth => config.lighting.azimuth += delta,
+                    Knob::Elevation => config.lighting.elevation += delta,
+                    Knob::Exposure => config.lighting.exposure += delta,
+                    Knob::Fov => config.lens.fov += delta,
+                    Knob::Speed => config.lens.speed += delta,
+                    Knob::Playback => {
+                        active.playback.speed = (active.playback.speed + delta).clamp(0.25, 3.0)
+                    }
+                }
+                config.validate();
+            }
+            Action::FreeCamera => {
+                let next = !config.lens.free;
+                active.set_free(&mut config.lens, next);
+            }
+            Action::Reset => {
+                *config = Config::default();
+                active.reset_view(&config.lens);
+                active.playback = Playback::default();
+                lab.status = "Padrões restaurados na cena. Salve para manter.".into();
+            }
+            Action::Save => match &options.settings {
+                Some(path) => match config.save(path) {
+                    Ok(()) => lab.status = "Preferências do Dev Lab salvas.".into(),
+                    Err(error) => lab.status = format!("Falha ao salvar: {error}"),
+                },
+                None => lab.status = "Caminho de preferências indisponível.".into(),
+            },
+            Action::Screenshot => {
+                if let Some(directory) = &options.captures {
+                    match std::fs::create_dir_all(directory) {
+                        Ok(()) => {
+                            let id = std::time::SystemTime::now()
+                                .duration_since(std::time::UNIX_EPOCH)
+                                .unwrap_or_default()
+                                .as_millis();
+                            let path = directory.join(format!("estacao-07-dev-lab-{id}.png"));
+                            commands
+                                .spawn(Screenshot::primary_window())
+                                .observe(save_to_disk(path.clone()));
+                            lab.status = format!("Captura solicitada: {}", path.display());
+                        }
+                        Err(error) => lab.status = format!("Falha ao preparar a captura: {error}"),
+                    }
+                }
+            }
+        }
+    }
+}
+
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Bevy injects camera and independent input resources."
+)]
+fn camera_input(
+    time: Res<Time>,
+    keys: Res<ButtonInput<KeyCode>>,
+    mouse: Res<AccumulatedMouseMotion>,
+    wheel: Res<AccumulatedMouseScroll>,
+    comfort: Res<Comfort>,
+    bindings: Res<Preferences>,
+    (mut config, mut lab): (ResMut<Config>, ResMut<Lab>),
+    windows: Query<&Window, With<PrimaryWindow>>,
+    options: Res<Options>,
+) {
+    let Some(active) = lab.active.as_mut() else {
+        return;
+    };
+    if !options.smoke && !windows.single().is_ok_and(|window| window.focused) {
+        active.captured = false;
+        active.look_armed = false;
+        return;
+    }
+    if !active.captured || ctrl(&keys) && chord_down(&keys) {
+        return;
+    }
+    if active.look_armed && mouse.delta != Vec2::ZERO {
+        let sensitivity = comfort.sensitivity;
+        config.lens.yaw =
+            (config.lens.yaw - mouse.delta.x * sensitivity).rem_euclid(std::f32::consts::TAU);
+        config.lens.pitch = (config.lens.pitch - mouse.delta.y * sensitivity).clamp(-1.52, 1.52);
+    }
+    active.look_armed = true;
+    if let Some(orbit) = &mut active.orbit {
+        orbit.radius = (orbit.radius * (-wheel.delta.y * 0.12).exp()).clamp(0.19, 19.0);
+        let rotation =
+            Quat::from_rotation_y(config.lens.yaw) * Quat::from_rotation_x(config.lens.pitch);
+        config.lens.position = (orbit.target + rotation * Vec3::Z * orbit.radius).into();
+        return;
+    }
+    let movement = crate::desktop::movement_input(&keys, &bindings);
+    if !config.lens.free {
+        active.jump |= movement.jump;
+        if active
+            .walker
+            .feet
+            .distance_squared(Vec3::from(config.lens.position).with_y(active.walker.feet.y))
+            > 1e-8
+        {
+            config.lens.position = (active.walker.feet + Vec3::Y * 1.62).into();
+        }
+        return;
+    }
+    let vertical = i8::from(keys.pressed(KeyCode::Space)) - i8::from(ctrl(&keys));
+    let rotation = Quat::from_euler(EulerRot::YXZ, config.lens.yaw, config.lens.pitch, 0.0);
+    let direction = (rotation * Vec3::new(movement.movement.x, 0., -movement.movement.y)
+        + Vec3::Y * f32::from(vertical))
+    .clamp_length_max(1.0);
+    if direction != Vec3::ZERO {
+        let speed = config.lens.speed * if shift(&keys) { 2.2 } else { 1.0 };
+        config.lens.position = (Vec3::from(config.lens.position)
+            + direction * speed * time.delta_secs())
+        .clamp(Vec3::new(-30., -3., -29.), Vec3::new(30., 20., 28.))
+        .into();
+    }
+}
+
+fn cursor(
+    lab: Res<Lab>,
+    options: Res<Options>,
+    mut windows: Query<(&mut CursorOptions, &Window), With<PrimaryWindow>>,
+) {
+    if let Some(active) = &lab.active
+        && let Ok((mut cursor, window)) = windows.single_mut()
+    {
+        let captured = active.captured && window.focused && !options.smoke;
+        let mode = if captured {
+            CursorGrabMode::Locked
+        } else {
+            CursorGrabMode::None
+        };
+        if cursor.grab_mode != mode {
+            cursor.grab_mode = mode;
+        }
+        if cursor.visible == captured {
+            cursor.visible = !captured;
+        }
+    }
+}

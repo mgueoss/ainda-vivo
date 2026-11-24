@@ -6,3 +6,5 @@ local-build.ps1
 
 /windows/
 *.zip
+/scripts/presenca/__pycache__/
+/art/presenca/*.blend1

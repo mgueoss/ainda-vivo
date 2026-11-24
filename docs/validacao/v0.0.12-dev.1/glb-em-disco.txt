@@ -1,0 +1,10 @@
+AINDA VIVO v0.0.12-dev.1
+Dev Lab Windows: PASS
+quadros do teste: 1492
+quadros totais: 1492
+GLB externo: true
+estúdio (mediana ms, 25 amostras): Some(6.0824)
+contagem inicial: Some(Counts { entities: 3114, meshes: 230, materials: 164, images: 93, labs: 0, models: 0 })
+contagens em campanha após saídas repetidas: [Counts { entities: 3500, meshes: 237, materials: 174, images: 102, labs: 0, models: 0 }, Counts { entities: 3500, meshes: 237, materials: 174, images: 102, labs: 0, models: 0 }, Counts { entities: 3500, meshes: 237, materials: 174, images: 102, labs: 0, models: 0 }, Counts { entities: 3500, meshes: 237, materials: 174, images: 102, labs: 0, models: 0 }]
+verificações adicionais em pausa: 0, última: None
+falhas: []

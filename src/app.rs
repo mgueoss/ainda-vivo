@@ -317,6 +317,9 @@ pub struct MainCamera;
 #[derive(Component)]
 pub struct Flashlight;
 
+#[derive(Debug, Clone, Copy, Hash, PartialEq, Eq, SystemSet)]
+pub struct BeforeCampaign;
+
 pub fn restart(session: &mut Session, player: &mut LocalPlayer, comfort: &mut Comfort) {
     *session = Session {
         screen: Screen::Playing,
@@ -344,6 +347,14 @@ pub fn run() -> bevy::app::AppExit {
             std::time::Duration::from_secs_f64(1.0 / 60.0),
         ));
     }
+    #[cfg(feature = "dev-lab")]
+    let lab = crate::lab::Options::from_args();
+    #[cfg(feature = "dev-lab")]
+    {
+        lab.configure_source(&mut app);
+        app.insert_resource(lab.clone());
+    }
+
     app.insert_resource(ClearColor(crate::scene::DISTANCE_DARK))
         .insert_resource(Time::<Fixed>::from_hz(60.0))
         .insert_resource(Time::<Virtual>::from_max_delta(
@@ -415,9 +426,14 @@ pub fn run() -> bevy::app::AppExit {
                 crate::psychology::reserve,
             )
                 .chain()
-                .after(bevy::input::InputSystems),
+                .after(bevy::input::InputSystems)
+                .after(BeforeCampaign)
+                .run_if(campaign_running),
         )
-        .add_systems(FixedUpdate, crate::desktop::simulate)
+        .add_systems(
+            FixedUpdate,
+            crate::desktop::simulate.run_if(campaign_running),
+        )
         .add_systems(
             Update,
             (
@@ -462,9 +478,22 @@ pub fn run() -> bevy::app::AppExit {
                 crate::desktop::sync_cursor,
                 crate::preferences::save,
             )
-                .chain(),
-        )
-        .run()
+                .chain()
+                .run_if(campaign_running),
+        );
+    #[cfg(feature = "dev-lab")]
+    if lab.enabled {
+        app.add_plugins(crate::lab::LabPlugin);
+    }
+    app.run()
+}
+
+#[cfg(feature = "dev-lab")]
+use crate::lab::campaign_running;
+
+#[cfg(not(feature = "dev-lab"))]
+fn campaign_running() -> bool {
+    true
 }
 
 #[cfg(test)]
