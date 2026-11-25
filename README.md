@@ -47,7 +47,7 @@ O jogo pausa ao perder o foco. Fechar a janela encerra o programa. O menu permit
 
 ## Desenvolvimento
 
-A build experimental `v0.0.12-dev.2` inclui as animações da Presença, a pista e a aproximação em primeira pessoa pelo Dev Lab. A v0.0.11 é a versão recomendada para jogar a campanha. [Guia do Dev Lab](docs/DEV-LAB.md) · [Handoff da Etapa 2](AINDA-VIVO-HANDOFF-v0.0.12-dev.2.md)
+A build experimental `v0.0.12-dev.3` inclui a navegação, a percepção e o corredor de testes da Presença. A v0.0.11 é a versão recomendada para jogar a campanha. [Guia do Dev Lab](docs/DEV-LAB.md) · [Handoff de O Observador](AINDA-VIVO-HANDOFF-v0.0.12-dev.3.md)
 
 Requisitos: Windows x64, Rust estável com Cargo, Visual Studio C++ Build Tools e Windows SDK. O ambiente original tem Rust/Cargo 1.97.1 e Visual Studio 2022 Community. Não é necessário instalar Blender para esta versão.
 

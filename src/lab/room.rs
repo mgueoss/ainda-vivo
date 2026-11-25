@@ -383,9 +383,16 @@ pub(super) fn walk(
     };
     command.yaw = config.lens.yaw;
     command.jump = std::mem::take(&mut active.jump);
+    let gate = active.observer.solid();
+    if let Some(gate) = gate {
+        active.room.solids.push(gate);
+    }
     active
         .walker
         .step(command, time.delta_secs(), &active.room.solids);
+    if gate.is_some() {
+        active.room.solids.pop();
+    }
     if active.walker.feet.y < -3.0 {
         active.walker = walker(Vec3::new(0.0, 0.002, 4.2));
     }

@@ -464,6 +464,9 @@ pub fn run() -> bevy::app::AppExit {
                 crate::scene::station::animate,
                 (
                     crate::atmosphere::director::update,
+                    #[cfg(feature = "dev-lab")]
+                    crate::scene::presence::update.run_if(crate::lab::observer::legacy),
+                    #[cfg(not(feature = "dev-lab"))]
                     crate::scene::presence::update,
                     crate::reality::update,
                     crate::reality::tools,

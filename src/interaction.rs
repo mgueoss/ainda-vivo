@@ -17,6 +17,7 @@ pub fn interact(
     mut session: ResMut<Session>,
     camera: Query<&Transform, With<MainCamera>>,
     targets: Query<&Interactable>,
+    #[cfg(feature = "dev-lab")] mut physical: Option<ResMut<crate::lab::observer::Campaign>>,
 ) {
     session.prompt.clear();
     if session.screen != Screen::Playing || session.collapse_active() {
@@ -63,6 +64,14 @@ pub fn interact(
     let key = format!("{:?}", bindings.key("interact", KeyCode::KeyE));
     session.prompt = format!("[{}] {}", key.strip_prefix("Key").unwrap_or(&key), label);
     if keys.just_pressed(bindings.key("interact", KeyCode::KeyE)) {
+        #[cfg(feature = "dev-lab")]
+        if let Some(physical) = &mut physical {
+            physical.activity(
+                target.action,
+                (target.bounds.min + target.bounds.max) * 0.5,
+                session.elapsed,
+            );
+        }
         session.act(target.action);
     }
 }

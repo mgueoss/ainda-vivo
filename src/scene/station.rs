@@ -2,7 +2,7 @@
 mod detail;
 mod machines;
 mod motion;
-mod plan;
+pub(crate) mod plan;
 mod workspaces;
 
 use super::{Builder, SceneRole, surfaces};

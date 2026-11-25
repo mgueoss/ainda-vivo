@@ -1,0 +1,13 @@
+cargo fmt --all -- --check — PASS
+cargo clippy --locked --offline --workspace --all-targets --all-features -- -D warnings — PASS
+cargo build --locked --offline -p ainda-vivo --features dev-lab — PASS
+cargo check --locked --offline -p ainda-vivo --no-default-features — PASS
+test lab::observer::brain::tests::alternate_plan_avoids_obstacle_and_never_crosses_closed_gate ... ok
+test lab::observer::brain::tests::peek_needs_a_real_edge_and_space_outside_the_wall ... ok
+test lab::observer::brain::tests::sound_investigation_respects_connections_and_uses_an_approximation ... ok
+test lab::observer::brain::tests::blocked_actor_gives_up_and_threat_is_stationary ... ok
+test lab::observer::brain::tests::vision_requires_exposure_and_closed_door_preserves_stale_location ... ok
+test result: ok. 37 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

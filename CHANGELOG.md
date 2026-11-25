@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.0.12-dev.3 — O Observador
+
+- Presença experimental com visão obstruída por paredes e portas, audição aproximada, memória de curta duração e navegação física pelos setores da Estação.
+- O diretor oferece janelas para manifestações. A criatura escolhe seus comportamentos com base nos estímulos locais e usa as ações do rig da dev.2.
+- Aba **IA** no Dev Lab com porta de ensaio, ruído por alvo, controle manual, rotas, visão e memória. `--presence-physical` seleciona a representação física na campanha experimental. [Guia](docs/DEV-LAB.md) · [Handoff](AINDA-VIVO-HANDOFF-v0.0.12-dev.3.md)
+
 ## v0.0.12-dev.2 — Movimentos Antinaturais
 
 - Ações da Presença no mesmo rig e na mesma malha da dev.1. Incluem vigília, passadas humanoides, três rupturas, dois ritmos de corrida quadrúpede, frenagem, retomada da postura em pé e uma despedida lenta.

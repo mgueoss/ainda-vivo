@@ -314,6 +314,10 @@ impl Director {
     }
 }
 
+#[allow(
+    clippy::too_many_arguments,
+    reason = "Independent optional physical representation."
+)]
 pub fn update(
     time: Res<Time>,
     mut session: ResMut<Session>,
@@ -322,6 +326,7 @@ pub fn update(
     (presence, threat, illusions): (Res<Presence>, Res<Threat>, Res<Illusions>),
     (smoke, developer): (Res<SmokeTest>, Res<Developer>),
     mut director: ResMut<Director>,
+    #[cfg(feature = "dev-lab")] physical: Option<Res<crate::lab::observer::Campaign>>,
 ) {
     if session.attempt != director.attempt {
         let seed = if let Some(seed) = developer.seed {
@@ -366,6 +371,10 @@ pub fn update(
         .observer()
         .distortion_ready(session.elapsed);
     let memory = session.memory();
+    #[cfg(feature = "dev-lab")]
+    let physical_active = physical.is_some_and(|mode| mode.active());
+    #[cfg(not(feature = "dev-lab"))]
+    let physical_active = false;
     let echo_ready = memory.echo_pattern(session.elapsed, distorted).is_some()
         && session.progress().phase() >= Phase::Electrical
         && crate::atmosphere::sound::service_source(player.body.feet, player.yaw).is_some();
@@ -383,7 +392,8 @@ pub fn update(
             phase: session.progress().phase(),
             forward: Quat::from_euler(EulerRot::YXZ, player.yaw, player.pitch, 0.0) * Vec3::NEG_Z,
             speed: player.body.velocity.xz().length(),
-            protected: presence.active()
+            protected: physical_active
+                || presence.active()
                 || atmosphere.quiet > 0.14
                 || atmosphere.episode.holding_silence()
                 || threat.active()

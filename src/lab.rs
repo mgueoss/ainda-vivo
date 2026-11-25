@@ -1,6 +1,7 @@
 mod library;
 mod motion;
 mod motion_qa;
+pub(crate) mod observer;
 mod panel;
 mod qa;
 mod room;
@@ -41,10 +42,12 @@ const EMBEDDED_PATH: &str = "ainda_vivo/presenca.glb";
 pub(super) struct Options {
     pub(super) enabled: bool,
     preview_station: bool,
+    physical: bool,
     source: Option<PathBuf>,
     settings: Option<PathBuf>,
     smoke: bool,
     motion_smoke: bool,
+    observer_smoke: bool,
     record_motion: bool,
     captures: Option<PathBuf>,
 }
@@ -59,13 +62,18 @@ impl Options {
                 .map(|pair| PathBuf::from(&pair[1]))
         };
         let motion_smoke = has("--smoke-motion");
-        let smoke = has("--smoke-lab") || motion_smoke;
-        let enabled = has("--dev-lab") || smoke;
+        let observer_smoke = has("--smoke-observer");
+        let physical = has("--presence-physical") || observer_smoke;
+        let smoke = has("--smoke-lab") || motion_smoke || observer_smoke;
+        let enabled = has("--dev-lab") || smoke || physical;
         let local =
             std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("AindaVivo/dev-lab"));
         Self {
             enabled,
-            preview_station: enabled && (has("--smoke-lab") || has("--lab-campaign-preview")),
+            preview_station: enabled
+                && !physical
+                && (has("--smoke-lab") || has("--lab-campaign-preview")),
+            physical,
             source: enabled.then(|| value("--lab-assets")).flatten(),
             settings: value("--lab-config").or_else(|| {
                 (!smoke)
@@ -79,6 +87,7 @@ impl Options {
             }),
             smoke,
             motion_smoke,
+            observer_smoke,
             record_motion: motion_smoke && has("--lab-record-motion"),
         }
     }
@@ -124,12 +133,14 @@ impl Plugin for LabPlugin {
                 Path::new(EMBEDDED_PATH),
                 include_bytes!("../assets/models/presenca.glb").as_slice(),
             );
+        let physical = app.world().resource::<Options>().physical;
         app.insert_resource(config)
             .insert_resource(Lab {
                 status,
                 ..default()
             })
             .init_resource::<library::Catalog>()
+            .insert_resource(observer::Campaign::new(physical))
             .add_message::<Action>()
             .add_message::<motion::MotionEvent>()
             .add_systems(Startup, library::begin_import)
@@ -138,6 +149,7 @@ impl Plugin for LabPlugin {
                 (
                     qa::inject_keys,
                     motion_qa::open,
+                    observer::qa::keys,
                     switch.in_set(crate::app::BeforeCampaign),
                 )
                     .chain()
@@ -147,11 +159,20 @@ impl Plugin for LabPlugin {
             .add_systems(Update, library::finish_import)
             .add_systems(
                 Update,
+                observer::update_campaign
+                    .after(crate::atmosphere::director::update)
+                    .before(crate::scene::presence::update)
+                    .run_if(campaign_running),
+            )
+            .add_systems(Update, library::animate_observer)
+            .add_systems(
+                Update,
                 (
                     panel::input,
                     shortcuts,
                     actions,
                     camera_input,
+                    observer::update_lab,
                     library::animate,
                     library::sync,
                     library::remember_events,
@@ -174,7 +195,13 @@ impl Plugin for LabPlugin {
             )
             .add_systems(Last, (qa::verify, motion_qa::verify));
         let options = app.world().resource::<Options>();
-        if options.motion_smoke {
+        if options.observer_smoke {
+            app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                std::time::Duration::from_secs_f64(1.0 / 60.0),
+            ))
+            .insert_resource(observer::qa::Check::new())
+            .add_systems(Last, observer::qa::verify);
+        } else if options.motion_smoke {
             app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
                 std::time::Duration::from_secs_f64(1.0 / 60.0),
             ))
@@ -207,6 +234,7 @@ struct Active {
     eye: f32,
     orbit: Option<Orbit>,
     playback: Playback,
+    observer: observer::TestLab,
 }
 
 #[derive(Clone, Copy)]
@@ -380,7 +408,8 @@ fn switch(
     if lab.search_focus || !ctrl(&keys) || !keys.just_pressed(KeyCode::KeyI) {
         return;
     }
-    if let Some(old) = lab.active.take() {
+    if let Some(mut old) = lab.active.take() {
+        old.observer.dispose(&mut commands);
         for model in &views.models {
             commands.entity(model).despawn();
         }
@@ -449,6 +478,7 @@ fn switch(
         eye: 1.62,
         orbit: None,
         playback: Playback::default(),
+        observer: observer::TestLab::default(),
     };
     current.reset_view(&config.lens);
     lab.active = Some(current);
@@ -520,6 +550,7 @@ enum Action {
     Contacts,
     Displace,
     FollowGaze,
+    Observer(observer::Command),
     Step(i8),
     Play,
     Repeat,
@@ -784,6 +815,7 @@ fn actions(
             Action::Displace => {
                 active.playback.displacement = !active.playback.displacement;
             }
+            Action::Observer(command) => observer::command(active, &mut config, command),
             Action::FollowGaze => {
                 if active.playback.follow_gaze {
                     active.playback.follow_gaze = false;
@@ -886,6 +918,8 @@ fn actions(
                 active.set_free(&mut config.lens, next);
             }
             Action::Reset => {
+                active.observer.dispose(&mut commands);
+                active.observer = observer::TestLab::default();
                 *config = Config::default();
                 active.reset_view(&config.lens);
                 active.playback = Playback::default();

@@ -2,6 +2,7 @@ use super::{
     Action, Knob, Lab, Options, ctrl,
     library::{self, Catalog},
     motion::{self, Mode},
+    observer::{Command as AI, Knob as AiKnob, State as AiState},
     settings::{Category, Config, Lighting, MAX_INSTANCES, Model, Preset, Tab},
 };
 use bevy::{
@@ -54,6 +55,8 @@ pub(super) enum Label {
     Measure(Knob),
     Timeline,
     Technical,
+    Observer,
+    ObserverValue(AiKnob),
 }
 
 pub(super) fn spawn(commands: &mut Commands, camera: Entity, config: &Config) -> Entity {
@@ -210,6 +213,7 @@ fn inspector(side: &mut ChildSpawnerCommands) {
         button(line, "Objeto", Action::SetTab(Tab::Object));
         button(line, "Luz", Action::SetTab(Tab::Lighting));
         button(line, "Animação", Action::SetTab(Tab::Animation));
+        button(line, "IA", Action::SetTab(Tab::Observer));
         button(line, "Ajuda", Action::SetTab(Tab::Help));
     });
     scroll(side).with_children(|list| {
@@ -302,6 +306,36 @@ fn inspector(side: &mut ChildSpawnerCommands) {
             button(view, "Encerrar demonstração", Action::StopDemo);
             section(view, "CLIPES DO MODELO");
             view.spawn((column(3), UsesClipList));
+        });
+        group(list, Tab::Observer).with_children(|view| {
+            row(view).with_children(|line| {
+                button(line, "Cenário IA", Action::Observer(AI::Enable));
+                button(line, "Pausa IA", Action::Observer(AI::Pause));
+                button(line, "Reiniciar", Action::Observer(AI::Reset));
+            });
+            row(view).with_children(|line| {
+                button(line, "Automática", Action::Observer(AI::Automatic));
+                button(line, "Guias", Action::Observer(AI::Guides));
+                button(line, "Porta", Action::Observer(AI::Door));
+            });
+            row(view).with_children(|line| {
+                button(line, "Próximo alvo", Action::Observer(AI::Target));
+                button(line, "Gerar ruído", Action::Observer(AI::Noise));
+            });
+            view.spawn((text("", 12.0, ACCENT), Label::Observer));
+            section(view, "PARÂMETROS");
+            for (knob, name, delta) in AiKnob::ALL {
+                row(view).with_children(|line| {
+                    line.spawn((text(name, 12.0, MUTED), Node { flex_grow: 1.0, ..default() }));
+                    button(line, "−", Action::Observer(AI::Adjust(knob, -delta)));
+                    line.spawn((text("", 12.0, INK), Label::ObserverValue(knob)));
+                    button(line, "+", Action::Observer(AI::Adjust(knob, delta)));
+                });
+            }
+            section(view, "ESTADO MANUAL");
+            for state in [AiState::Absent].into_iter().chain(AiState::ACTIVE) {
+                button(view, state.label(), Action::Observer(AI::Select(state)));
+            }
         });
         group(list, Tab::Help).with_children(|view| {
             section(view, "ATALHOS");
@@ -703,6 +737,14 @@ pub(super) fn refresh(
             Action::Skeleton => config.skeleton,
             Action::Contacts => active.playback.contacts,
             Action::Displace => active.playback.displacement,
+            Action::Observer(AI::Enable) => active.observer.enabled,
+            Action::Observer(AI::Pause) => active.observer.paused,
+            Action::Observer(AI::Door) => active.observer.closed,
+            Action::Observer(AI::Automatic) => active.observer.automatic,
+            Action::Observer(AI::Guides) => active.observer.guides,
+            Action::Observer(AI::Select(state)) => {
+                active.observer.enabled && active.observer.brain.state == state
+            }
             Action::FollowGaze => active.playback.follow_gaze,
             Action::MotionDemo(mode) => active
                 .playback
@@ -756,6 +798,20 @@ pub(super) fn refresh(
                 format!("{:02}  {}", i + 1, s.model.name())
             }),
             Label::Measure(knob) => measure(*knob, &config, &active.playback),
+            Label::Observer => {
+                if config.tab == Tab::Observer {
+                    active.observer.diagnostics()
+                } else {
+                    continue;
+                }
+            }
+            Label::ObserverValue(knob) => {
+                if config.tab == Tab::Observer {
+                    knob.value(active.observer.tuning)
+                } else {
+                    continue;
+                }
+            }
             Label::Technical => {
                 let sample = |id: &bevy::diagnostic::DiagnosticPath| {
                     metrics

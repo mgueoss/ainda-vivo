@@ -269,6 +269,7 @@ pub(super) enum Tab {
     Object,
     Lighting,
     Animation,
+    Observer,
     Help,
 }
 

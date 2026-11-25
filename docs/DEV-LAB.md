@@ -1,6 +1,6 @@
 # Dev Lab do AINDA VIVO
 
-A build experimental v0.0.12-dev.2 inclui o Dev Lab. No pacote Windows, extraia os arquivos e execute **ABRIR DEV LAB.cmd**. No menu ou durante a campanha, pressione **Ctrl+I** para entrar ou voltar. O botão de busca recebe a digitação até **Enter**, **Esc** ou um clique em outro controle.
+A build experimental v0.0.12-dev.3 inclui o Dev Lab. No pacote Windows, extraia os arquivos e execute **ABRIR DEV LAB.cmd**. No menu ou durante a campanha, pressione **Ctrl+I** para entrar ou voltar. O botão de busca recebe a digitação até **Enter**, **Esc** ou um clique em outro controle.
 
 | Atalho | Ação |
 |---|---|
@@ -36,6 +36,17 @@ Na biblioteca, a busca combina o nome e a categoria. Clique em um item para adic
 - **Encerrar demonstração** devolve o modelo ao ponto de inspeção da cena. Para voltar à câmera inicial, use **Ctrl+R**. Encerrar o Lab preserva a câmera e o progresso da campanha.
 
 **Salvar cena** grava as preferências em `%LOCALAPPDATA%\AindaVivo\dev-lab\settings.json`. As capturas ficam em `%LOCALAPPDATA%\AindaVivo\dev-lab\captures`. Restaurar os padrões vale para a sessão corrente. Salvar depois torna essa escolha persistente. As alterações de instâncias e materiais no Lab são locais à cena.
+
+## IA e navegação
+
+Abra **IA → Cenário IA** para usar o corredor leste. **Automática** alterna a tomada de decisões. Os botões de estado manual permitem dirigir o comportamento. **Pausa IA** congela as decisões e a animação. **Reiniciar** repõe a criatura e limpa a memória. A câmera e os comandos de movimento do laboratório continuam disponíveis.
+
+- **Porta** alterna a obstrução física do corredor. Se houver um corpo na abertura, a porta espera por espaço desocupado.
+- **Próximo alvo** muda a posição marcada no piso. **Gerar ruído** produz um estímulo nessa posição. Use **Investigação** na lista manual para ordenar o deslocamento explícito ao alvo.
+- **Guias** mostram o cone e os raios, o corpo, a rota e os destinos. Verde marca a rota, os pontos e um raio confirmado. Âmbar marca o cone, a caixa corporal e os raios não confirmados.
+- Ajuste alcance, abertura da visão, sensibilidade, velocidade e tempos em **Parâmetros**. As leituras de memória têm coordenadas X/Z em metros, com o tempo restante em segundos.
+
+Para testar na Estação, use `ainda-vivo.exe --presence-physical` ou abra a build com **ABRIR DEV LAB.cmd** e pressione **F5** fora do Lab. A alternância espera o encontro ativo terminar. O terminal pode fixar a seed com `--seed 20261118`.
 
 ## Uso no repositório
 

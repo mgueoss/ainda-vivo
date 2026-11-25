@@ -1,0 +1,11 @@
+AINDA VIVO v0.0.12-dev.3
+smoke-echoes: PASS
+frames: 2735
+seed: 20261118
+route: Archive (order, switched lamp), workshop (known folder), Electrical (real rearm, physical footsteps, relay, relocated folder), Control (two native camera frames), pump, exit, post retry
+checks: elapsed gates; real observer throughout chain; optional chain preserves truth and does not lock the gate; one post retry with clean perception
+requested audio playback check: false
+spatial echo sinks heard: 0 of 3
+BMP captures: 0
+walk-and-wait wall frame intervals: 699 samples, median 6.08 ms, p95 6.80 ms
+failures: []

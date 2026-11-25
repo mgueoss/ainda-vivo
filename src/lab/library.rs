@@ -1,6 +1,7 @@
 use super::{
     Lab, Options,
     motion::{self, ClipMotion, Clock, Limb, MotionEvent},
+    observer::Pose,
     room::{FLOOR, Guide, LAYER, Seat},
     settings::{Config, Model, Surface},
 };
@@ -79,6 +80,27 @@ pub(super) struct Catalog {
 }
 
 impl Catalog {
+    pub fn spawn_observer(
+        &self,
+        commands: &mut Commands,
+        pose: Pose,
+        transform: Transform,
+        parent: Option<Entity>,
+    ) -> Option<Entity> {
+        let scene = &self.import.as_ref()?.scene;
+        let mut root = commands.spawn((
+            Name::new("A Presença · Observador"),
+            SceneRoot(scene.clone()),
+            pose,
+            transform,
+            Visibility::Inherited,
+        ));
+        if let Some(parent) = parent {
+            root.insert(ChildOf(parent));
+        }
+        Some(root.observe(on_model_ready).id())
+    }
+
     pub fn reload(&self, assets: &AssetServer) {
         if let Some(path) = self.handle.path() {
             assets.reload(path.clone());
@@ -738,7 +760,7 @@ pub(super) fn sync(
         if *transform != pose {
             *transform = pose;
         }
-        let shown = if spec.visible {
+        let shown = if spec.visible && !active.observer.enabled {
             Visibility::Inherited
         } else {
             Visibility::Hidden
@@ -768,7 +790,7 @@ pub(super) fn sync(
                 },
                 ChildOf(active.root),
                 pose,
-                if spec.visible {
+                if spec.visible && !active.observer.enabled {
                     Visibility::Inherited
                 } else {
                     Visibility::Hidden
@@ -1030,20 +1052,26 @@ fn on_model_ready(
     materials: Query<&MeshMaterial3d<StandardMaterial>>,
     animators: Query<&AnimationPlayer>,
     catalog: Res<Catalog>,
+    physical: Query<&Pose>,
 ) {
     let Some(import) = &catalog.import else {
         return;
     };
+    let in_lab = physical.get(ready.entity).map_or(true, |pose| pose.lab);
     for descendant in hierarchy.iter_descendants(ready.entity) {
         if let Ok(material) = materials.get(descendant) {
             commands.entity(descendant).insert((
-                RenderLayers::layer(LAYER),
                 NoFrustumCulling,
                 Part {
                     owner: ready.entity,
                     original: material.0.clone(),
                 },
             ));
+            if in_lab {
+                commands
+                    .entity(descendant)
+                    .insert(RenderLayers::layer(LAYER));
+            }
         }
         if animators.contains(descendant) {
             commands.entity(descendant).insert((
@@ -1057,6 +1085,65 @@ fn on_model_ready(
                 },
             ));
         }
+    }
+}
+
+pub(super) fn animate_observer(
+    mut commands: Commands,
+    catalog: Res<Catalog>,
+    lab: Res<Lab>,
+    time: Res<Time>,
+    mut animators: Query<(Entity, &mut AnimationPlayer, &mut Player)>,
+    roots: Query<&Pose>,
+) {
+    let Some(import) = &catalog.import else {
+        return;
+    };
+    for (entity, mut player, mut state) in &mut animators {
+        let Ok(pose) = roots.get(state.owner) else {
+            continue;
+        };
+        if pose.paused || (!pose.lab && lab.active.is_some()) {
+            state.evaluate(entity, false, &import.graph, &mut commands);
+            continue;
+        }
+        let Some(index) = catalog.number(pose.clip) else {
+            continue;
+        };
+        let clip = &import.clips[index];
+        let mut dirty = index != state.clip;
+        if dirty {
+            let blend = import
+                .clips
+                .get(state.clip)
+                .map_or(0.0, |old| clip.motion.state.blend_seconds(old.motion.state));
+            state.fade.start(&mut player, clip.node, blend);
+            state.clip = index;
+            state.clock = Clock::default();
+        }
+        let dt = time.delta_secs();
+        if let Some(phase) = pose.sample {
+            state
+                .clock
+                .seek(clip.duration * phase, &clip.motion, clip.duration);
+        } else {
+            state.clock.advance(
+                dt * pose.speed,
+                &clip.motion,
+                clip.duration,
+                clip.motion.repeat,
+                |_| {},
+            );
+        }
+        dirty |= !state.fade.from.is_empty();
+        state.fade.advance(&mut player, clip.node, dt);
+        if let Some(animation) = player.animation_mut(clip.node)
+            && animation.seek_time() != state.clock.time
+        {
+            animation.set_seek_time(state.clock.time);
+            dirty = true;
+        }
+        state.evaluate(entity, dirty, &import.graph, &mut commands);
     }
 }
 
