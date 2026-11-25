@@ -19,6 +19,8 @@ use incidents::Kind;
 pub use spatial::Voice;
 use spatial::{MixTarget, RATE, channels};
 #[cfg(feature = "dev-lab")]
+mod choreography;
+#[cfg(feature = "dev-lab")]
 pub(crate) mod presence_audio;
 #[cfg(feature = "dev-lab")]
 mod presence_bank;
@@ -55,6 +57,8 @@ enum Sound {
     Trailing,
     Reception,
     ServiceEcho,
+    #[cfg(feature = "dev-lab")]
+    Relay,
 }
 
 #[derive(Component)]
@@ -262,12 +266,16 @@ pub(super) fn service_source(feet: Vec3, yaw: f32) -> Option<Vec3> {
 
 pub fn emit(
     mut commands: Commands,
-    mut audio: ResMut<Assets<Voice>>,
     mut session: ResMut<Session>,
     (scene, threat, mut director): (Res<Atmosphere>, Res<Threat>, ResMut<Director>),
     player: Res<LocalPlayer>,
-    (bank, effects): (Res<SoundBank>, Res<crate::psychology::Effects>),
+    (mut audio, bank, effects): (
+        ResMut<Assets<Voice>>,
+        Res<SoundBank>,
+        Res<crate::psychology::Effects>,
+    ),
     mut gait: Local<Gait>,
+    #[cfg(feature = "dev-lab")] mut relay: MessageReader<crate::lab::observer::RelayClick>,
 ) {
     if (gait.attempt, gait.revision) != (session.attempt, session.perception_revision) {
         *gait = Gait {
@@ -282,6 +290,18 @@ pub fn emit(
         return;
     }
     let now = session.elapsed;
+    #[cfg(feature = "dev-lab")]
+    for click in relay.read() {
+        one_shot(
+            &mut commands,
+            &mut audio,
+            &session,
+            bank.incidents[Kind::Pipe as usize][2].clone(),
+            Sound::Relay,
+            click.0,
+            1.5,
+        );
+    }
     if let Some(position) = effects.echo {
         one_shot(
             &mut commands,
@@ -694,6 +714,8 @@ pub fn mix(
                 Sound::Trailing => 0.47,
                 Sound::Reception => 0.47,
                 Sound::ServiceEcho => 0.72,
+                #[cfg(feature = "dev-lab")]
+                Sound::Relay => 0.69,
             };
         if matches!(emitter.sound, Sound::Room) {
             let centre = gain * std::f32::consts::FRAC_1_SQRT_2;

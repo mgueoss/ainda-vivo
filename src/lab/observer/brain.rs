@@ -283,7 +283,7 @@ impl Brain {
         } else if was {
             self.memory.missed(self.clock, self.hit_sector);
         }
-        let in_player_view = player_sees(f, eye);
+        let in_player_view = self.visible && player_sees(f, eye);
         self.noticed = if in_player_view {
             self.noticed + elapsed
         } else {
@@ -343,6 +343,27 @@ impl Brain {
 
     pub(super) fn knowledge(&self) -> (Knowledge, Option<Memory>) {
         best_clue(self.clock, self.visible, self.seen, self.heard)
+    }
+
+    pub(super) fn forget(&mut self) {
+        self.memory = MemoryBook::default();
+        self.seen = None;
+        self.heard = None;
+        self.exposure = 0.0;
+        self.glimpse = None;
+        self.visible = false;
+        self.hit_sector = None;
+        self.visited = [None; 4];
+        self.recent = [State::Absent; 4];
+        self.used_clue = None;
+        self.plan = SearchPlan::default();
+        self.hunt.forget_path();
+        self.path.clear();
+        self.goal = None;
+        self.waypoint = 0;
+        self.review_at = self.clock;
+        self.memory
+            .record(self.clock, "memória limpa no laboratório", None);
     }
 
     pub(super) fn diagnosis(&self) -> String {

@@ -3,7 +3,7 @@ use super::{
     library::{self, Catalog},
     motion::{self, Mode},
     observer::{
-        Command as AI, HuntCommand as Hunt, HuntKnob, Knob as AiKnob, State as AiState,
+        BotStyle, Command as AI, HuntCommand as Hunt, HuntKnob, Knob as AiKnob, State as AiState,
         hunt::Contact,
     },
     settings::{Category, Config, Lighting, MAX_INSTANCES, Model, Preset, Tab},
@@ -321,6 +321,7 @@ fn inspector(side: &mut ChildSpawnerCommands) {
             view.spawn((column(3), UsesClipList));
         });
         group(list, Tab::Observer).with_children(|view| {
+            section(view, "LABORATÓRIO COGNITIVO");
             row(view).with_children(|line| {
                 button(line, "Cenário IA", Action::Observer(AI::Enable));
                 button(line, "Pausa IA", Action::Observer(AI::Pause));
@@ -334,6 +335,25 @@ fn inspector(side: &mut ChildSpawnerCommands) {
             row(view).with_children(|line| {
                 button(line, "Próximo alvo", Action::Observer(AI::Target));
                 button(line, "Gerar ruído", Action::Observer(AI::Noise));
+            });
+            row(view).with_children(|line| {
+                button(line, "Um passo", Action::Observer(AI::Step));
+                button(line, "Limpar memória", Action::Observer(AI::ClearMemory));
+                button(line, "Caixa", Action::Observer(AI::Obstacle));
+            });
+            row(view).with_children(|line| {
+                button(line, "Outra seed", Action::Observer(AI::NextSeed));
+                button(line, "Repetir seed", Action::Observer(AI::Replay));
+            });
+            row(view).with_children(|line| {
+                for style in BotStyle::ALL {
+                    button(line, style.label(), Action::Observer(AI::Bot(style)));
+                }
+                button(line, "Parar bot", Action::Observer(AI::StopBot));
+            });
+            row(view).with_children(|line| {
+                button(line, "Rodar matriz", Action::Observer(AI::Matrix));
+                button(line, "Exportar diagnóstico", Action::Observer(AI::Export));
             });
             view.spawn((text("", 12.0, ACCENT), Label::Observer));
             section(view, "PARÂMETROS");
@@ -746,6 +766,10 @@ pub(super) fn refresh(
         Query<&library::Viewer>,
     ),
     sources: Query<&crate::atmosphere::sound::presence_audio::PresenceEmitter>,
+    (director, session): (
+        Res<crate::atmosphere::director::Director>,
+        Res<crate::app::Session>,
+    ),
     mut previous_count: Local<Option<(Entity, u32, bool)>>,
 ) {
     let Some(active) = &lab.active else { return };
@@ -819,6 +843,7 @@ pub(super) fn refresh(
             Action::Observer(AI::Door) => active.observer.closed,
             Action::Observer(AI::Automatic) => active.observer.automatic,
             Action::Observer(AI::Guides) => active.observer.guides,
+            Action::Observer(AI::Obstacle) => active.observer.obstacle,
             Action::Hunt(Hunt::Result(result)) => active.observer.hunt.selected == result,
             Action::Hunt(Hunt::Psychology) => active.observer.hunt.psychological,
             Action::Sound(Sound::Reverb) => active.sound.reverb,
@@ -883,7 +908,11 @@ pub(super) fn refresh(
             Label::Measure(knob) => measure(*knob, &config, &active.playback),
             Label::Observer => {
                 if config.tab == Tab::Observer {
-                    active.observer.diagnostics()
+                    format!(
+                        "{}\n\n{}",
+                        director.acoustic_status(session.elapsed),
+                        active.observer.diagnostics()
+                    )
                 } else {
                     continue;
                 }

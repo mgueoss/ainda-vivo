@@ -6,6 +6,7 @@ const CELL: f32 = 0.8;
 pub const HUMAN: Vec3 = Vec3::new(0.50, 1.12, 0.50);
 pub const LOW: Vec3 = Vec3::new(0.68, 0.65, 1.24);
 const LOW_GRID: Vec3 = Vec3::new(LOW.x, LOW.y, LOW.x);
+const TURN_CLEARANCE: Vec3 = Vec3::new(1.42, LOW.y, 1.42);
 const EDGES: [IVec2; 4] = [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y];
 const NODE_BUDGET: usize = 3_200;
 
@@ -50,7 +51,7 @@ pub struct Nav {
     zones: Vec<Zone>,
     portals: Vec<Portal>,
     room: Vec<Option<usize>>,
-    edges: [Vec<u8>; 2],
+    edges: [Vec<u8>; 3],
     origin: Vec2,
     size: IVec2,
     pub(crate) solids: Vec<Aabb>,
@@ -101,10 +102,11 @@ impl Nav {
             let edge = if nav.room[i].is_some() { 15 } else { 0 };
             nav.edges[0][i] = edge;
             nav.edges[1][i] = edge;
+            nav.edges[2][i] = edge;
         }
         // Rasteriza apenas os quadrados atingidos por cada obstáculo expandido.
         // Inclui as arestas, mesmo quando a parede é mais fina que uma célula.
-        for (profile, &half) in [HUMAN, LOW_GRID].iter().enumerate() {
+        for (profile, &half) in [HUMAN, LOW_GRID, TURN_CLEARANCE].iter().enumerate() {
             for &solid in &nav.solids {
                 let bounds = hull(solid, half);
                 let y = half.y + 0.022;
@@ -338,7 +340,13 @@ impl Nav {
                 let Some(j) = self.index(next) else { continue };
                 let Some(room) = self.room[j] else { continue };
                 let b = self.center(j);
-                if cost + 1 >= score[j]
+                let move_cost = if low && self.edges[2][i] & (1 << edge) == 0 {
+                    5
+                } else {
+                    1
+                };
+                let distance = cost + move_cost;
+                if distance >= score[j]
                     || !self.link(self.room[i].unwrap(), room, (a, b), closed, half)
                     || closed
                         && self.gate.is_some_and(|g| {
@@ -351,12 +359,12 @@ impl Nav {
                 {
                     continue;
                 }
-                score[j] = cost + 1;
+                score[j] = distance;
                 parent[j] = i;
                 let delta = (next - goal).abs();
                 queue.push(Reverse((
-                    cost + 1 + (delta.x + delta.y) as u16,
-                    cost + 1,
+                    distance + (delta.x + delta.y) as u16,
+                    distance,
                     j,
                 )));
             }

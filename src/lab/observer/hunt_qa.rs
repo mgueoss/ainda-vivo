@@ -67,10 +67,10 @@ impl Check {
 
 pub(in crate::lab) fn keys(check: Option<Res<Check>>, mut keys: ResMut<ButtonInput<KeyCode>>) {
     if let Some(check) = check {
-        if matches!(check.frames, 518 | 1370) {
+        if matches!(check.frames, 518 | 2042) {
             keys.press(KeyCode::ControlLeft);
             keys.press(KeyCode::KeyI);
-        } else if matches!(check.frames, 519 | 1371) {
+        } else if matches!(check.frames, 519 | 2043) {
             keys.release(KeyCode::ControlLeft);
             keys.release(KeyCode::KeyI);
         }
@@ -116,7 +116,7 @@ pub(in crate::lab) fn verify(
     }
     if catalog.number(28).is_none() {
         c.need(false, "importação dos clipes");
-        c.frames = 1389;
+        c.frames = 2054;
     }
     c.frames += 1;
     let f = c.frames;
@@ -268,17 +268,35 @@ pub(in crate::lab) fn verify(
         1324 => {
             c.need(
                 lab.active.as_ref().is_some_and(|a| {
+                    let hunt = &a.observer.brain.hunt;
                     a.observer.closed
                         && a.observer.brain.pos.y < -9.75
-                        && matches!(a.observer.brain.hunt.end, Some(End::Lost | End::Route))
+                        && hunt.result.is_none()
+                        && (matches!(hunt.end, Some(End::Lost | End::Route))
+                            || matches!(
+                                hunt.strategy,
+                                hunt::Strategy::LocalSearch | hunt::Strategy::SectorSearch
+                            ))
                 }),
-                "porta fecha durante a corrida e interrompe a perseguição",
+                "porta bloqueia contato e permite busca localizada",
             );
-            capture(&options, &mut commands, "03-porta-e-recuo.png");
+            capture(&options, &mut commands, "03-busca-com-porta-fechada.png");
+        }
+        1980 => {
+            c.need(
+                lab.active.as_ref().is_some_and(|a| {
+                    let hunt = &a.observer.brain.hunt;
+                    a.observer.closed
+                        && hunt.finished
+                        && matches!(hunt.end, Some(End::Lost | End::Route | End::Time))
+                        && hunt.result.is_none()
+                }),
+                "a busca diante da porta fechada termina dentro do orçamento",
+            );
             actions.write(Action::Hunt(HuntCommand::Result(Some(Contact::Capture))));
             actions.write(Action::Hunt(HuntCommand::Rehearse));
         }
-        1358 => {
+        2016 => {
             c.need(
                 lab.active.as_ref().is_some_and(|a| {
                     a.observer.hunt.session.expedition.observer().reality() == Reality::False
@@ -286,7 +304,7 @@ pub(in crate::lab) fn verify(
                 "captura do Lab isolada",
             );
         }
-        1390 => {
+        2055 => {
             c.need(
                 lab.active.is_none()
                     && scene.session.expedition.truth().phase() == Progress::Return,

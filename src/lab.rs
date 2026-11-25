@@ -41,6 +41,25 @@ use std::{
 
 const EMBEDDED_PATH: &str = "ainda_vivo/presenca.glb";
 
+pub(crate) fn cognition_cli() -> Option<bevy::app::AppExit> {
+    let args = std::env::args_os().collect::<Vec<_>>();
+    if !args.iter().any(|arg| arg == "--check-cognition") {
+        return None;
+    }
+    let value = |key| args.windows(2).find(|p| p[0] == key).map(|p| &p[1]);
+    let seed = value("--ai-seed").and_then(|v| v.to_str()?.parse().ok());
+    let path =
+        value("--smoke-report").map_or_else(|| PathBuf::from("inteligencia.txt"), PathBuf::from);
+    let (passed, report) = observer::scenario::matrix(seed);
+    let content = format!("AINDA VIVO v{}\n{report}", crate::app::VERSION);
+    let saved = std::fs::write(path, content).is_ok();
+    Some(if passed && saved {
+        bevy::app::AppExit::Success
+    } else {
+        bevy::app::AppExit::error()
+    })
+}
+
 #[derive(Clone, Default, Resource)]
 pub(super) struct Options {
     pub(super) enabled: bool,
@@ -53,6 +72,8 @@ pub(super) struct Options {
     observer_smoke: bool,
     hunt_smoke: bool,
     sound_smoke: bool,
+    cognitive_smoke: bool,
+    ai_seed: Option<u32>,
     record_motion: bool,
     captures: Option<PathBuf>,
 }
@@ -70,9 +91,15 @@ impl Options {
         let observer_smoke = has("--smoke-observer");
         let hunt_smoke = has("--smoke-hunt");
         let sound_smoke = has("--smoke-sonoro");
-        let physical = has("--presence-physical") || observer_smoke || hunt_smoke;
-        let smoke =
-            has("--smoke-lab") || motion_smoke || observer_smoke || hunt_smoke || sound_smoke;
+        let cognitive_smoke = has("--smoke-inteligencia");
+        let physical =
+            has("--presence-physical") || observer_smoke || hunt_smoke || cognitive_smoke;
+        let smoke = has("--smoke-lab")
+            || motion_smoke
+            || observer_smoke
+            || hunt_smoke
+            || sound_smoke
+            || cognitive_smoke;
         let enabled = has("--dev-lab") || smoke || physical;
         let local =
             std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("AindaVivo/dev-lab"));
@@ -98,6 +125,8 @@ impl Options {
             observer_smoke,
             hunt_smoke,
             sound_smoke,
+            cognitive_smoke,
+            ai_seed: value("--ai-seed").and_then(|p| p.to_str()?.parse::<u32>().ok()),
             record_motion: motion_smoke && has("--lab-record-motion"),
         }
     }
@@ -162,6 +191,7 @@ impl Plugin for LabPlugin {
                     observer::qa::keys,
                     observer::hunt_qa::keys,
                     sound_qa::keys,
+                    observer::cognition_qa::keys,
                     switch.in_set(crate::app::BeforeCampaign),
                 )
                     .chain()
@@ -208,7 +238,13 @@ impl Plugin for LabPlugin {
             )
             .add_systems(Last, (qa::verify, motion_qa::verify));
         let options = app.world().resource::<Options>();
-        if options.sound_smoke {
+        if options.cognitive_smoke {
+            app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                std::time::Duration::from_secs_f64(1.0 / 60.0),
+            ))
+            .init_resource::<observer::cognition_qa::Check>()
+            .add_systems(Last, observer::cognition_qa::verify);
+        } else if options.sound_smoke {
             app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
                 std::time::Duration::from_secs_f64(1.0 / 60.0),
             ))
@@ -528,7 +564,7 @@ fn switch(
         eye: 1.62,
         orbit: None,
         playback: Playback::default(),
-        observer: observer::TestLab::default(),
+        observer: observer::TestLab::with_seed(options.ai_seed),
         sound: sound_lab::SoundLab::default(),
     };
     current.reset_view(&config.lens);
@@ -974,7 +1010,8 @@ fn actions(
             }
             Action::Reset => {
                 active.observer.dispose(&mut commands);
-                active.observer = observer::TestLab::default();
+                active.observer.remove_obstacle(&mut active.room.solids);
+                active.observer = observer::TestLab::with_seed(options.ai_seed);
                 active.sound.dispose(&mut commands);
                 active.sound = default();
                 *config = Config::default();

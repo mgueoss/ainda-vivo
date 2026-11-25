@@ -2,8 +2,21 @@ use super::{
     Brain, Footstep, Frame, HUMAN, Nav, Noise, Portal, Pose, State, Tuning, View, Zone, forward,
     point, presentation,
 };
-use super::{hunt, hunt_lab::HuntLab};
-use crate::lab::{Active, Lab, library::Catalog, room, settings::Config};
+use super::{
+    hunt,
+    hunt_lab::{HuntCommand, HuntLab, hunt_command},
+    scenario::{self, Bot, BotStyle},
+};
+use crate::{
+    app::Session,
+    atmosphere::director::Director,
+    lab::{
+        Active, Lab, Options,
+        library::Catalog,
+        room,
+        settings::{Config, Tab},
+    },
+};
 use ainda_vivo_core::collision::Aabb;
 use bevy::{
     camera::visibility::{NoFrustumCulling, RenderLayers},
@@ -72,6 +85,15 @@ pub enum Command {
     Noise,
     Select(State),
     Adjust(Knob, f32),
+    Step,
+    ClearMemory,
+    NextSeed,
+    Replay,
+    Obstacle,
+    Bot(BotStyle),
+    StopBot,
+    Matrix,
+    Export,
 }
 
 #[derive(Default)]
@@ -85,17 +107,25 @@ pub struct TestLab {
     pub brain: Brain,
     pub tuning: Tuning,
     pub hunt: HuntLab,
+    pub(super) seed: Option<u32>,
+    pub(super) bot: Option<Bot>,
+    pub(in crate::lab) obstacle: bool,
+    pub(in crate::lab) result: Option<String>,
     stage: Option<Stage>,
     nav: Option<Nav>,
     pulse: Option<Noise>,
     footstep: Footstep,
     blocked_door: bool,
+    single_step: bool,
+    export: bool,
+    report: String,
 }
 
 struct Stage {
     root: Entity,
     actor: Entity,
     gate: Entity,
+    crate_model: Entity,
     guides: Entity,
     lines: [Handle<Mesh>; 2],
     revision: u32,
@@ -105,12 +135,32 @@ fn gate() -> Aabb {
     Aabb::from_center_size(Vec3::new(4.60, 1.275, -9.0), Vec3::new(2.50, 2.55, 0.22))
 }
 
-fn reset_brain(brain: &mut Brain) {
-    *brain = Brain::seeded(70146);
+fn movable_crate() -> Aabb {
+    Aabb::from_center_size(Vec3::new(-6.18, 0.92, -7.12), Vec3::new(1.28, 1.84, 0.84))
+}
+
+fn reset_brain(brain: &mut Brain, seed: Option<u32>) {
+    *brain = Brain::seeded(seed.unwrap_or(70146));
     brain.spawn(HOME, 0.0);
 }
 
 impl TestLab {
+    pub(in crate::lab) fn with_seed(seed: Option<u32>) -> Self {
+        Self { seed, ..default() }
+    }
+
+    pub(in crate::lab) fn bot_running(&self) -> bool {
+        self.bot.is_some()
+    }
+
+    pub(in crate::lab) fn remove_obstacle(&mut self, solids: &mut Vec<Aabb>) {
+        if self.obstacle {
+            remove_obstacle(solids);
+            self.obstacle = false;
+            self.nav = None;
+        }
+    }
+
     pub fn dispose(&mut self, commands: &mut Commands) {
         if let Some(stage) = self.stage.take() {
             commands.entity(stage.root).despawn();
@@ -138,7 +188,7 @@ impl TestLab {
             })
         };
         format!(
-            "{} · {}\n{}\nDestino {} · rota {}\nÚlt. visão {}\nÚlt. ruído {}\nSetores {:?} · encontro {:?}\nAlvo {} · porta {}{}\n\n{}",
+            "{} · {} · seed {}\n{}\nDestino {} · rota {}\nÚlt. visão {}\nÚlt. ruído {}\nSetores {:?} · encontro {:?}\nAlvo {} · porta {}{}\nBot {} · caixa {}\n\n{}{}",
             b.state.label(),
             if self.paused {
                 "pausada"
@@ -147,6 +197,8 @@ impl TestLab {
             } else {
                 "manual"
             },
+            self.seed
+                .unwrap_or(if b.hunt.active() { 4141 } else { 70146 }),
             b.reason,
             describe(b.goal),
             b.path.len().saturating_sub(b.waypoint),
@@ -161,12 +213,33 @@ impl TestLab {
             } else {
                 ""
             },
-            b.diagnosis()
+            self.bot.as_ref().map_or("—", |bot| bot.style.label()),
+            if self.obstacle {
+                "colocada"
+            } else {
+                "retirada"
+            },
+            b.diagnosis(),
+            self.result
+                .as_ref()
+                .map_or(String::new(), |report| format!("\n\n{report}"))
         )
     }
 }
 
 pub fn command(active: &mut Active, config: &mut Config, action: Command) {
+    let action = match (action, &active.observer.bot) {
+        (Command::Replay, Some(bot)) => Command::Bot(bot.style),
+        _ => action,
+    };
+    if let Command::Bot(style) = action {
+        hunt_command(active, config, HuntCommand::Start);
+        config.tab = Tab::Observer;
+        let start = active.camera_transform(config).translation.xz();
+        let lab = &mut active.observer;
+        lab.bot = Some(Bot::new(style, start, lab.seed.unwrap_or(4141)));
+        return;
+    }
     if action == Command::Enable && !active.observer.enabled {
         config.tab = crate::lab::settings::Tab::Observer;
         config.lens.free = false;
@@ -184,21 +257,83 @@ pub fn command(active: &mut Active, config: &mut Config, action: Command) {
                 lab.automatic = true;
                 lab.paused = false;
                 lab.guides = true;
-                reset_brain(&mut lab.brain);
+                reset_brain(&mut lab.brain, lab.seed);
+            } else {
+                lab.bot = None;
+                lab.remove_obstacle(&mut active.room.solids);
             }
         }
         Command::Pause => lab.paused = !lab.paused,
-        Command::Reset => {
-            reset_brain(&mut lab.brain);
+        Command::Reset | Command::Replay => {
+            reset_brain(&mut lab.brain, lab.seed);
             lab.footstep = Footstep::default();
             lab.pulse = None;
             lab.paused = false;
+            if action == Command::Replay {
+                lab.automatic = true;
+            }
+            lab.bot = None;
             lab.hunt.reset();
+        }
+        Command::NextSeed => {
+            lab.seed = Some(lab.seed.unwrap_or(70146).wrapping_add(1));
+        }
+        Command::Step => {
+            lab.paused = true;
+            lab.single_step = true;
+        }
+        Command::ClearMemory => lab.brain.forget(),
+        Command::StopBot => lab.bot = None,
+        Command::Bot(_) => unreachable!("início do bot já processado"),
+        Command::Matrix => {
+            let (ok, report) = scenario::matrix(lab.seed);
+            lab.result = report
+                .lines()
+                .find(|line| line.starts_with("Resultado"))
+                .map(str::to_owned);
+            lab.report = report;
+            if !ok {
+                lab.result = Some("Matriz com falhas. Exporte o diagnóstico para detalhes.".into());
+            }
+        }
+        Command::Export => lab.export = true,
+        Command::Obstacle => {
+            let bounds = movable_crate();
+            if lab.obstacle {
+                remove_obstacle(&mut active.room.solids);
+            } else if !lab.enabled
+                || [
+                    (
+                        point(lab.brain.pos).with_y(0.8),
+                        hunt::half_at(lab.brain.yaw),
+                    ),
+                    (active.walker.feet + Vec3::Y * 0.75, Vec3::splat(0.35)),
+                    (
+                        lab.bot
+                            .as_ref()
+                            .map_or(Vec3::splat(-100.), |bot| point(bot.at).with_y(0.8)),
+                        Vec3::splat(0.3),
+                    ),
+                ]
+                .into_iter()
+                .any(|(p, half)| {
+                    let solid = bounds.expanded(half);
+                    p.cmpge(solid.min).all() && p.cmple(solid.max).all()
+                })
+            {
+                lab.result = Some("Espere a área da caixa ficar livre.".into());
+                return;
+            } else {
+                active.room.solids.push(bounds);
+            }
+            lab.obstacle = !lab.obstacle;
+            lab.nav = None;
+            lab.brain.path.clear();
         }
         Command::Automatic => {
             lab.automatic = !lab.automatic;
             if lab.automatic && lab.brain.state == State::Absent {
-                reset_brain(&mut lab.brain);
+                reset_brain(&mut lab.brain, lab.seed);
             }
         }
         Command::Door => {
@@ -229,8 +364,9 @@ pub fn command(active: &mut Active, config: &mut Config, action: Command) {
         }
         Command::Select(state) => {
             lab.automatic = false;
+            lab.bot = None;
             if lab.brain.state == State::Absent && state != State::Absent {
-                reset_brain(&mut lab.brain);
+                reset_brain(&mut lab.brain, lab.seed);
             }
             let mut target = TARGETS[lab.target];
             if state == State::Approach {
@@ -257,6 +393,11 @@ pub fn command(active: &mut Active, config: &mut Config, action: Command) {
             *value = (*value + delta).clamp(min, max);
         }
     }
+}
+
+fn remove_obstacle(solids: &mut Vec<Aabb>) {
+    let bounds = movable_crate();
+    solids.retain(|s| s.min != bounds.min || s.max != bounds.max);
 }
 
 fn spawn(
@@ -297,6 +438,18 @@ fn spawn(
     let guides = commands
         .spawn((ChildOf(root), Transform::default(), Visibility::Inherited))
         .id();
+    let obstacle = movable_crate();
+    let crate_model = commands
+        .spawn((
+            ChildOf(root),
+            Name::new("Obstáculo móvel"),
+            Mesh3d(meshes.add(Cuboid::from_size(obstacle.max - obstacle.min))),
+            MeshMaterial3d(materials.add(Color::srgb(0.32, 0.24, 0.15))),
+            Transform::from_translation((obstacle.min + obstacle.max) * 0.5),
+            Visibility::Hidden,
+            RenderLayers::layer(room::LAYER),
+        ))
+        .id();
     let lines = [Color::srgb(0.33, 0.96, 0.70), Color::srgb(1.0, 0.65, 0.26)].map(|base_color| {
         let mesh = meshes.add(room::line_mesh(vec![[0.; 3]; 2]));
         let material = materials.add(StandardMaterial {
@@ -318,6 +471,7 @@ fn spawn(
         root,
         actor,
         gate,
+        crate_model,
         guides,
         lines,
         revision: catalog.revision(),
@@ -354,7 +508,12 @@ pub fn update_lab(
     mut commands: Commands,
     mut lab: ResMut<Lab>,
     config: Res<Config>,
-    catalog: Res<Catalog>,
+    (catalog, options, director, campaign): (
+        Res<Catalog>,
+        Res<Options>,
+        Res<Director>,
+        Res<Session>,
+    ),
     time: Res<Time>,
     (mut meshes, mut materials): (ResMut<Assets<Mesh>>, ResMut<Assets<StandardMaterial>>),
     mut signals: MessageWriter<hunt::Signal>,
@@ -378,7 +537,7 @@ pub fn update_lab(
         spawn(active, &catalog, &mut commands, &mut meshes, &mut materials);
     }
     let eye = active.camera_transform(&config);
-    let view = View {
+    let mut view = View {
         eye: eye.translation,
         facing: *eye.forward(),
         protected: false,
@@ -386,12 +545,28 @@ pub fn update_lab(
     let lab = &mut active.observer;
     let Some(stage) = &lab.stage else { return };
     let nav = lab.nav.get_or_insert_with(|| lab_nav(&active.room.solids));
-    if !lab.paused {
-        lab.hunt.session.elapsed += time.delta_secs();
-        lab.hunt.session.psychology.step(
-            time.delta_secs(),
-            ainda_vivo_core::psychology::Recovery::None,
-        );
+    let stepped = std::mem::take(&mut lab.single_step);
+    let dt = if stepped {
+        super::brain::STEP
+    } else {
+        time.delta_secs()
+    };
+    if !lab.paused || stepped {
+        if let Some(bot) = &mut lab.bot {
+            bot.tick(
+                dt,
+                nav,
+                lab.closed,
+                lab.brain.hunt.phase == hunt::Phase::Run,
+            );
+            view.eye = point(bot.at).with_y(1.62);
+            view.facing = (point(lab.brain.pos) - view.eye).normalize_or_zero();
+        }
+        lab.hunt.session.elapsed += dt;
+        lab.hunt
+            .session
+            .psychology
+            .step(dt, ainda_vivo_core::psychology::Recovery::None);
         let footstep = lab.footstep.sample(
             active.walker.feet.xz(),
             active.walker.velocity.xz().length(),
@@ -411,8 +586,7 @@ pub fn update_lab(
         {
             lab.brain.spawn(HOME, 0.);
         }
-        lab.brain
-            .step(time.delta_secs(), &frame, lab.tuning, lab.automatic);
+        lab.brain.step(dt, &frame, lab.tuning, lab.automatic);
         if let Some(cue) = lab.brain.hunt.cue.take() {
             signals.write(hunt::Signal {
                 cue,
@@ -424,7 +598,33 @@ pub fn update_lab(
             lab.brain.hunt.result = Some(lab.hunt.contact());
         }
     }
+    if let Some(bot) = &lab.bot {
+        view.eye = point(bot.at).with_y(1.62);
+    }
     lab.hunt.distance = lab.brain.pos.distance(view.eye.xz());
+    if std::mem::take(&mut lab.export) {
+        let report = format!(
+            "AINDA VIVO v{}\n{}\n\n{}\n\n{}",
+            crate::app::VERSION,
+            director.acoustic_status(campaign.elapsed),
+            lab.diagnostics(),
+            lab.report
+        );
+        let result = options
+            .captures
+            .as_ref()
+            .map_or_else(std::env::current_dir, |p| Ok(p.clone()))
+            .and_then(|dir| {
+                std::fs::create_dir_all(&dir)?;
+                let file = dir.join("inteligencia-presenca.txt");
+                std::fs::write(&file, report)?;
+                Ok(file)
+            });
+        lab.result = Some(match result {
+            Ok(path) => format!("Diagnóstico salvo em {}", path.display()),
+            Err(err) => format!("Falha ao exportar diagnóstico. {err}"),
+        });
+    }
     let b = &lab.brain;
     let visibility = |v| {
         if v {
@@ -434,9 +634,12 @@ pub fn update_lab(
         }
     };
     commands.entity(stage.gate).insert(visibility(lab.closed));
+    commands
+        .entity(stage.crate_model)
+        .insert(visibility(lab.obstacle));
     commands.entity(stage.guides).insert(visibility(lab.guides));
     commands.entity(stage.actor).insert((
-        presentation(b, true, lab.paused),
+        presentation(b, true, lab.paused && !stepped),
         Transform::from_translation(point(b.pos).with_y(0.022))
             .with_rotation(Quat::from_rotation_y(b.yaw)),
         visibility(b.state != State::Absent && !b.hunt.hidden()),
@@ -468,6 +671,20 @@ fn draw(lab: &TestLab, meshes: &mut Assets<Mesh>) {
         line(p - Vec3::X * 0.24, p + Vec3::X * 0.24);
         line(p - Vec3::Z * 0.24, p + Vec3::Z * 0.24);
         line(p, p + Vec3::Y * 0.47);
+    }
+    if let Some(bot) = &lab.bot {
+        let p = base(bot.at);
+        line(p, p + Vec3::Y * 1.62);
+        line(p - Vec3::X * 0.45, p + Vec3::X * 0.45);
+    }
+    if let Some(clue) = b.knowledge().1 {
+        let radius = clue.radius(b.clock);
+        for n in 0..16 {
+            let ring = |i: usize| {
+                base(clue.at + Vec2::from_angle(i as f32 * std::f32::consts::TAU / 16.) * radius)
+            };
+            line(ring(n), ring(n + 1));
+        }
     }
     let mut guide = |a: Vec3, b: Vec3| sight.extend([a.to_array(), b.to_array()]);
     if b.state != State::Absent {

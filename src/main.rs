@@ -16,5 +16,9 @@ mod ui;
 mod vhs;
 
 fn main() -> bevy::app::AppExit {
+    #[cfg(feature = "dev-lab")]
+    if let Some(result) = lab::cognition_cli() {
+        return result;
+    }
     app::run()
 }

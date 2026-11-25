@@ -41,6 +41,14 @@ pub fn interact(
                 "acender luminária da mesa"
             };
         }
+        #[cfg(feature = "dev-lab")]
+        if item.action == Action::CheckRelay
+            && physical
+                .as_ref()
+                .is_some_and(|mode| mode.relay_ready(session.elapsed))
+        {
+            label = "conferir via e testar o relé";
+        }
         if let Some(distance) = item.bounds.ray(origin, direction, REACH)
             && distance <= best
         {

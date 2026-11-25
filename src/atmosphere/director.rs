@@ -18,6 +18,8 @@ pub enum Mood {
     Relief,
     Unease,
     Anticipation,
+    #[cfg(feature = "dev-lab")]
+    Climax,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
@@ -90,6 +92,20 @@ pub struct Director {
     quiet_until: f32,
     #[cfg(feature = "dev-lab")]
     hunt_after: f32,
+    #[cfg(feature = "dev-lab")]
+    hunt_focus: u8,
+    #[cfg(feature = "dev-lab")]
+    acoustic: AcousticPacing,
+}
+
+#[cfg(feature = "dev-lab")]
+#[derive(Default)]
+struct AcousticPacing {
+    until: f32,
+    rest_until: f32,
+    purpose: Option<&'static str>,
+    stage: &'static str,
+    reaction: &'static str,
 }
 
 impl Director {
@@ -108,6 +124,9 @@ impl Director {
             || strain >= 78.0
             || !escape
             || now < self.quiet_until
+            || self.hunt_focus > 0
+            || now < self.acoustic.until
+            || self.pressure > 0.67
         {
             return None;
         }
@@ -180,6 +199,10 @@ impl Director {
     }
 
     pub fn allows(&self, cue: Cue, now: f32) -> bool {
+        #[cfg(feature = "dev-lab")]
+        if now < self.acoustic.until || now < self.acoustic.rest_until {
+            return false;
+        }
         let Some(window) = &self.window else {
             return false;
         };
@@ -201,6 +224,10 @@ impl Director {
 
     pub fn claim(&mut self, cue: Cue, now: f32) {
         debug_assert!(self.allows(cue, now));
+        self.record_beat(cue, now);
+    }
+
+    fn record_beat(&mut self, cue: Cue, now: f32) {
         self.tally.cues[cue as usize] += 1;
         self.last_event = Some((now, cue));
         self.history.rotate_right(1);
@@ -231,6 +258,85 @@ impl Director {
         debug!("Diretor: {cue:?} em {now:.2}s");
     }
 
+    #[cfg(feature = "dev-lab")]
+    pub(crate) fn acoustic_available(&self, now: f32, diversion: bool) -> bool {
+        self.hunt_focus == 0
+            && now >= self.quiet_until
+            && now >= self.acoustic.until
+            && now >= self.acoustic.rest_until
+            && self.pressure < 0.57
+            && (self.allows(Cue::Sound, now)
+                || diversion
+                    && self.window.is_none()
+                    && self.last_event.is_none_or(|(at, _)| now - at > 19.0))
+    }
+
+    #[cfg(feature = "dev-lab")]
+    pub(crate) fn begin_acoustic(&mut self, now: f32, purpose: &'static str) {
+        self.record_beat(Cue::Sound, now);
+        self.acoustic.until = now + 12.0;
+        self.acoustic.purpose = Some(purpose);
+        self.acoustic.stage = "Preparação";
+        self.set_mood(Mood::Suspicion);
+    }
+
+    #[cfg(feature = "dev-lab")]
+    pub(crate) fn acoustic_stage(&mut self, stage: &'static str, mood: Mood) {
+        self.acoustic.stage = stage;
+        self.set_mood(mood);
+    }
+
+    #[cfg(feature = "dev-lab")]
+    pub(crate) fn settle_acoustic(&mut self, now: f32, reaction: &'static str, rest: f32) {
+        self.acoustic.until = 0.0;
+        self.acoustic.rest_until = now + rest;
+        self.acoustic.purpose = None;
+        self.acoustic.stage = "Recuperação";
+        self.acoustic.reaction = reaction;
+        self.quiet_until = self.quiet_until.max(self.acoustic.rest_until);
+        self.next_window = self.next_window.max(self.acoustic.rest_until);
+        self.set_mood(Mood::Relief);
+    }
+
+    #[cfg(feature = "dev-lab")]
+    pub(crate) fn acoustic_status(&self, now: f32) -> String {
+        let moment = if now < self.acoustic.until || now < self.acoustic.rest_until {
+            self.acoustic.stage
+        } else {
+            "Sem cadeia sonora"
+        };
+        format!(
+            "Diretor {:?} · intensidade {:.2}\n{} · {}\nÚltima reação observável: {}",
+            self.mood,
+            self.pressure,
+            moment,
+            self.acoustic.purpose.unwrap_or("—"),
+            if self.acoustic.reaction.is_empty() {
+                "—"
+            } else {
+                self.acoustic.reaction
+            },
+        )
+    }
+
+    #[cfg(feature = "dev-lab")]
+    fn follow_hunt(&mut self, now: f32, motion: u8) {
+        if motion > 0 {
+            self.window = None;
+            self.pressure = self.pressure.max(if motion == 2 { 0.78 } else { 0.50 });
+            self.set_mood(if motion == 2 {
+                Mood::Climax
+            } else {
+                Mood::Tension
+            });
+        } else if self.hunt_focus > 0 {
+            self.quiet_until = self.quiet_until.max(now + 12.0);
+            self.next_window = self.next_window.max(now + 12.0);
+            self.set_mood(Mood::Relief);
+        }
+        self.hunt_focus = motion;
+    }
+
     fn step(&mut self, context: Context, dt: f32) {
         let now = context.elapsed;
         let target = match self.mood {
@@ -239,6 +345,8 @@ impl Director {
             Mood::Suspicion => 0.25,
             Mood::Anticipation => 0.30,
             Mood::Tension => 0.38,
+            #[cfg(feature = "dev-lab")]
+            Mood::Climax => 0.42,
         };
         self.hush += (target - self.hush) * (1.0 - (-1.9 * dt).exp());
         self.pressure *= (-dt / 5.7).exp();
@@ -269,6 +377,13 @@ impl Director {
             self.phase = context.phase;
             let after_recovery = self.last_event.map_or(0.0, |(time, _)| time + 5.4);
             self.next_window = self.next_window.min((now + 2.4).max(after_recovery));
+        }
+        #[cfg(feature = "dev-lab")]
+        if now < self.acoustic.until {
+            return;
+        } else if now < self.acoustic.rest_until {
+            self.set_mood(Mood::Relief);
+            return;
         }
         if let Some(window) = &self.window {
             if now < window.until {
@@ -401,6 +516,11 @@ pub fn update(
         director.requested = None;
         director.quiet_until = session.elapsed + 7.0;
         director.set_mood(Mood::Relief);
+        #[cfg(feature = "dev-lab")]
+        {
+            director.acoustic = AcousticPacing::default();
+            director.hunt_focus = 0;
+        }
     }
     if session.screen != Screen::Playing || session.collapse_active() {
         return;
@@ -417,7 +537,7 @@ pub fn update(
         .distortion_ready(session.elapsed);
     let memory = session.memory();
     #[cfg(feature = "dev-lab")]
-    let physical_active = physical.is_some_and(|mode| mode.active());
+    let physical_active = physical.as_ref().is_some_and(|mode| mode.active());
     #[cfg(not(feature = "dev-lab"))]
     let physical_active = false;
     let echo_ready = memory.echo_pattern(session.elapsed, distorted).is_some()
@@ -454,11 +574,44 @@ pub fn update(
         },
         time.delta_secs(),
     );
+    #[cfg(feature = "dev-lab")]
+    director.follow_hunt(
+        session.elapsed,
+        physical.as_ref().map_or(0, |mode| mode.hunt_intensity()),
+    );
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "dev-lab")]
+    #[test]
+    fn acoustic_sequences_and_active_hunts_reserve_the_pacing_window() {
+        let mut d = Director::new(1, 48);
+        d.window = Some(Window {
+            began: 80.0,
+            until: 88.0,
+            first: Some(Cue::Sound),
+        });
+        assert!(d.acoustic_available(82.0, false));
+        d.begin_acoustic(82.0, "suspeita");
+        d.window = Some(Window {
+            began: 82.0,
+            until: 99.0,
+            first: Some(Cue::Presence),
+        });
+        assert!(!d.allows(Cue::Presence, 84.0) && !d.acoustic_available(84.0, true));
+        d.settle_acoustic(86.0, "mudou de setor", 7.5);
+        assert!(!d.allows(Cue::Presence, 90.0));
+        assert!(d.allows(Cue::Presence, 94.0));
+        d.follow_hunt(96.0, 2);
+        assert_eq!(d.mood, Mood::Climax);
+        assert!(!d.acoustic_available(98.0, true));
+        d.follow_hunt(100.0, 0);
+        assert_eq!(d.mood, Mood::Relief);
+        assert!(d.quiet_until >= 112.0);
+    }
 
     #[cfg(feature = "dev-lab")]
     #[test]

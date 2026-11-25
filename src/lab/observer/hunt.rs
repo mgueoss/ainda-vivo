@@ -260,6 +260,14 @@ impl Hunt {
         self.phase != Phase::Idle
     }
 
+    pub(super) fn forget_path(&mut self) {
+        self.search = SearchPlan::default();
+        self.intercept = None;
+        self.planned = None;
+        self.next_plan = 0.0;
+        self.last_signal = f32::NEG_INFINITY;
+    }
+
     pub fn low(&self) -> bool {
         matches!(self.phase, Phase::Run | Phase::Brake) || self.fold() > 0.62
     }
@@ -497,10 +505,7 @@ impl Hunt {
 
         for (i, &far) in b.path.iter().enumerate().skip(b.waypoint + 1).take(4) {
             let bearing = angle(far - b.pos);
-            if f.nav
-                .clear_body(b.pos, far, half_at(bearing), f.door_closed)
-                && f.nav.clear_body(b.pos, far, HUMAN, f.door_closed)
-            {
+            if motor_clear(f, b.pos, far, b.yaw, bearing) {
                 b.waypoint = i;
             }
         }

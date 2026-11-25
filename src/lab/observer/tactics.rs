@@ -242,6 +242,70 @@ pub(super) fn intercept(
 mod tests {
     use super::*;
     use crate::lab::observer::nav::{Portal, Zone};
+    use ainda_vivo_core::collision::Aabb;
+
+    #[test]
+    fn interception_uses_a_witnessed_direction_and_avoids_closed_or_failed_passages() {
+        let nav = Nav::new(
+            vec![
+                Zone {
+                    min: Vec2::new(-6., -12.),
+                    max: Vec2::new(6., 0.),
+                },
+                Zone {
+                    min: Vec2::new(-6., 0.),
+                    max: Vec2::new(6., 12.),
+                },
+            ],
+            vec![Portal {
+                rooms: [0, 1],
+                at: Vec2::ZERO,
+                width: 4.8,
+                height: 3.,
+            }],
+            vec![],
+            Some(Aabb::from_center_size(
+                Vec3::new(0., 1.5, 0.),
+                Vec3::new(4.8, 3., 0.24),
+            )),
+        );
+        let clue = Memory {
+            at: Vec2::new(0., -5.),
+            when: 10.,
+            expires: 19.,
+            certainty: 0.94,
+            error: 0.22,
+            velocity: Vec2::Y * 2.8,
+            sector: Some(0),
+        };
+        let from = Vec2::new(0.8, 1.);
+        let mut book = MemoryBook::default();
+        assert_eq!(
+            intercept(&nav, &book, from, clue, 10., false, 4.95).map(|v| v.0),
+            Some([0, 1])
+        );
+        assert!(intercept(&nav, &book, from, clue, 10., true, 4.95).is_none());
+        assert!(intercept(&nav, &book, from, clue, 13., false, 4.95).is_none());
+        book.failed([0, 1], 10.);
+        book.failed([0, 1], 10.1);
+        assert!(intercept(&nav, &book, from, clue, 10.2, false, 4.95).is_none());
+        assert!(
+            intercept(
+                &nav,
+                &book,
+                from,
+                Memory {
+                    when: 100.,
+                    expires: 109.,
+                    ..clue
+                },
+                100.,
+                false,
+                4.95
+            )
+            .is_some()
+        );
+    }
 
     #[test]
     fn repeated_witnessed_routes_change_a_plan_and_failures_then_age_reduce_the_bias() {

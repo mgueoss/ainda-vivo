@@ -28,7 +28,7 @@ $archive = [IO.Compression.ZipFile]::Open($archivePath, [IO.Compression.ZipArchi
 try {
     [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $exe, 'ainda-vivo.exe', [IO.Compression.CompressionLevel]::Optimal) | Out-Null
     [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $notices, 'LICENCAS.txt') | Out-Null
-    Add-Text $archive 'ABRIR DEV LAB.cmd' "@echo off`r`nstart `"`" `"%~dp0ainda-vivo.exe`" --dev-lab`r`n" ([Text.Encoding]::ASCII)
+    Add-Text $archive 'ABRIR DEV LAB.cmd' "@echo off`r`nstart `"`" `"%~dp0ainda-vivo.exe`" --dev-lab --presence-physical`r`n" ([Text.Encoding]::ASCII)
     $readme = @"
 AINDA VIVO v$version
 Windows x64 • Build experimental do Dev Lab da Presença
@@ -36,7 +36,9 @@ Windows x64 • Build experimental do Dev Lab da Presença
 Extraia todo o pacote e abra ABRIR DEV LAB.cmd. No menu ou em campanha,
 use Ctrl+I para entrar e voltar. Na aba Animação, escolha um clipe,
 teste a Pista ou abra a Aproximação em primeira pessoa. Para testar
-percepção e navegação, abra IA > Cenário IA. Fora do laboratório, F5
+percepção, busca e memória, abra IA > Cenário IA. Experimente Desvio,
+Reversão e Circuito, ou execute a matriz automatizada com Rodar matriz.
+Fora do laboratório, F5
 solicita a troca entre a representação anterior e a Presença física.
 Para ensaiar corrida, retirada e contato, abra Caçada > Caçada livre.
 Em Som, experimente Porta e Repetir, Corrida física e Caçada invisível.

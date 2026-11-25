@@ -1,10 +1,12 @@
 mod brain;
 mod cognition;
+pub(super) mod cognition_qa;
 pub(crate) mod hunt;
 mod hunt_lab;
 pub(super) mod hunt_qa;
 mod nav;
 pub(super) mod qa;
+pub(super) mod scenario;
 mod tactics;
 mod test_lab;
 
@@ -26,6 +28,7 @@ pub(crate) use brain::State;
 use brain::{Brain, Frame, Noise, Tuning, View, angle, forward, player_sees};
 pub(super) use hunt_lab::{HuntCommand, HuntKnob, diagnostics as hunt_diagnostics, hunt_command};
 use nav::{HUMAN, Nav, Portal, Zone, point};
+pub(super) use scenario::BotStyle;
 pub(super) use test_lab::{Command, Knob, TestLab, command, update_lab};
 
 #[derive(Component, Clone, Copy)]
@@ -115,6 +118,7 @@ pub(crate) struct Campaign {
     attempt: (u64, u32),
     noise: Vec<Noise>,
     footstep: Footstep,
+    relay: Relay,
     protected_until: f32,
     last_manifest: Option<f32>,
     gate_was_open: Option<bool>,
@@ -138,8 +142,43 @@ impl Campaign {
         self.selected && self.brain.state != State::Absent
     }
 
+    pub(crate) fn hunt_intensity(&self) -> u8 {
+        if !self.selected || !self.brain.hunt.active() {
+            return 0;
+        }
+        let h = &self.brain.hunt;
+        if h.phase == hunt::Phase::Run
+            && matches!(
+                h.strategy,
+                hunt::Strategy::Direct | hunt::Strategy::Intercept
+            )
+        {
+            2
+        } else {
+            1
+        }
+    }
+
+    pub(crate) fn quiet_sector(&self) -> Option<u8> {
+        if !self.selected
+            || self.brain.visible
+            || self.brain.hunt.active()
+            || !matches!(
+                self.brain.state,
+                State::Follow | State::Investigate | State::Peek
+            )
+        {
+            return None;
+        }
+        self.nav.as_ref()?.sector(self.brain.pos).map(|it| it as u8)
+    }
+
     pub(crate) fn activity(&mut self, action: Action, at: Vec3, now: f32) {
         if !self.selected {
+            return;
+        }
+        if action == Action::CheckRelay {
+            self.relay.arm(at, now);
             return;
         }
         let (duration, power) = match action {
@@ -158,6 +197,35 @@ impl Campaign {
         if power > 0.0 && self.noise.len() < 6 {
             self.noise.push(Noise { at: at.xz(), power });
         }
+    }
+
+    pub(crate) fn relay_ready(&self, now: f32) -> bool {
+        self.selected && self.relay.at.is_none() && now >= self.relay.ready_at
+    }
+}
+
+#[derive(Message)]
+pub(crate) struct RelayClick(pub(crate) Vec3);
+
+#[derive(Default)]
+struct Relay {
+    at: Option<(f32, Vec3)>,
+    ready_at: f32,
+}
+
+impl Relay {
+    fn arm(&mut self, at: Vec3, now: f32) {
+        if self.at.is_none() && now >= self.ready_at {
+            self.at = Some((now + 1.45, at));
+            self.ready_at = now + 24.0;
+        }
+    }
+
+    fn tick(&mut self, now: f32) -> Option<Vec3> {
+        if self.at.is_some_and(|(due, _)| now >= due) {
+            return self.at.take().map(|(_, at)| at);
+        }
+        None
     }
 }
 
@@ -272,6 +340,7 @@ pub(super) struct Context<'w, 's> {
         ),
     >,
     signals: MessageWriter<'w, hunt::Signal>,
+    relay: MessageWriter<'w, RelayClick>,
     hunt_qa: Option<Res<'w, hunt_qa::Check>>,
 }
 
@@ -295,6 +364,8 @@ pub(super) fn update_campaign(
         mode.brain.next_manifest = 12.0;
         mode.noise.clear();
         mode.footstep = Footstep::default();
+        mode.relay = Relay::default();
+        mode.started = 0;
         mode.protected_until = 0.0;
         mode.retry = 0.0;
         mode.last_manifest = None;
@@ -352,6 +423,15 @@ pub(super) fn update_campaign(
     let mode = mode.as_mut();
     let was = mode.brain.pos;
     let unlocked = session.progress().exit_unlocked();
+    if let Some(at) = mode.relay.tick(session.elapsed) {
+        if mode.noise.len() < 6 {
+            mode.noise.push(Noise {
+                at: at.xz(),
+                power: 4.1,
+            });
+        }
+        ctx.relay.write(RelayClick(at));
+    }
     if mode.gate_was_open.replace(unlocked) == Some(false) && unlocked {
         mode.noise.push(Noise {
             at: crate::scene::station::EXIT_GATE.xz(),
@@ -521,4 +601,23 @@ fn escape_available(frame: &Frame, player: Vec2, threat: Vec2) -> bool {
     .take(2)
     .count()
         == 2
+}
+
+#[cfg(test)]
+mod relay_tests {
+    use super::*;
+
+    #[test]
+    fn relay_click_is_delayed_and_cannot_be_rearmed_during_cooldown() {
+        let at = Vec3::new(2., 1.1, 3.);
+        let mut relay = Relay::default();
+        relay.arm(at, 0.);
+        relay.arm(at * 2., 1.);
+        assert_eq!(relay.tick(1.44), None);
+        assert_eq!(relay.tick(1.45), Some(at));
+        relay.arm(at, 10.);
+        assert_eq!(relay.tick(22.), None);
+        relay.arm(at, 24.);
+        assert_eq!(relay.tick(25.46), Some(at));
+    }
 }

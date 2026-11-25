@@ -1,3 +1,4 @@
+use super::choreography::{self, Chain, Opportunity, Reaction, Stage, Start};
 pub(crate) use super::presence_bank::Family;
 use super::{
     presence_bank::{Bank, Surface, VARIANTS, next},
@@ -7,7 +8,7 @@ use crate::{
     app::{CollisionWorld, Comfort, MainCamera, Screen, Session},
     atmosphere::{
         Atmosphere,
-        director::{Cue as Beat, Director},
+        director::{Cue as Beat, Director, Mood},
     },
     lab::{
         Lab, LabCamera,
@@ -35,6 +36,7 @@ impl Plugin for PresenceAudio {
     fn build(&self, app: &mut App) {
         app.init_resource::<Bank>()
             .add_message::<Signal>()
+            .add_message::<crate::lab::observer::RelayClick>()
             .add_message::<Request>()
             .add_systems(
                 Update,
@@ -557,9 +559,17 @@ struct Schedule {
     stamp: (u64, u32),
     after: f32,
     sample: f32,
-    current: Option<Echo>,
+    current: Option<Chain>,
+    preferences: choreography::Preferences,
+    last_source: Option<u8>,
     rng: u32,
     charged: bool,
+}
+
+struct Source {
+    path: [Vec3; 2],
+    sector: u8,
+    covered: bool,
 }
 
 fn candidate(
@@ -567,11 +577,13 @@ fn candidate(
     closed: bool,
     view: Transform,
     order: usize,
-) -> Option<[Vec3; 2]> {
+    (physical, previous): (Option<u8>, Option<u8>),
+    recent: &[Option<u8>],
+) -> Option<Source> {
     let here = station::sector_id(view.translation)?;
     (0..PORTALS.len())
         .map(|i| PORTALS[(i + order) % PORTALS.len()])
-        .find_map(|p| {
+        .filter_map(|p| {
             let [_, side] = if p.rooms[0] as u8 == here {
                 p.rooms
             } else if p.rooms[1] as u8 == here {
@@ -579,6 +591,10 @@ fn candidate(
             } else {
                 return None;
             };
+            let sector = side as u8;
+            if physical == Some(sector) {
+                return None;
+            }
             let room = get(side);
             let away = ((room.min + room.max) * 0.5 - p.at).normalize_or_zero();
             [4.3, 3.0, 2.2].into_iter().find_map(|length| {
@@ -587,13 +603,37 @@ fn candidate(
                 let a = Vec3::new(from.x, 0.63, from.y);
                 let b = Vec3::new(toward.x, 0.63, toward.y);
                 let offset = a - view.translation;
-                (room.contains(from)
-                    && (5.0..22.0).contains(&offset.length())
-                    && (view.forward().dot(offset.normalize_or_zero()) < 0.67
-                        || world.occludes(view.translation, a, !closed))
-                    && !world.occludes(a, b, !closed))
-                .then_some([a, b])
+                if !room.contains(from) || !(5.0..22.0).contains(&offset.length()) {
+                    return None;
+                }
+                let covered = world.occludes(view.translation, a, !closed);
+                (covered || view.forward().dot(offset.normalize_or_zero()) < 0.67)
+                    .then_some(Source {
+                        path: [a, b],
+                        sector,
+                        covered,
+                    })
+                    .filter(|_| !world.occludes(a, b, !closed))
             })
+        })
+        .max_by(|a, b| {
+            let score = |x: &Source| {
+                let delta = x.path[0] - view.translation;
+                let known = if recent.contains(&Some(x.sector)) {
+                    0.55
+                } else {
+                    0.0
+                };
+                let novelty = if previous == Some(x.sector) {
+                    -1.5
+                } else {
+                    0.0
+                };
+                let side = view.right().dot(delta.normalize_or_zero()).abs();
+                let occlusion = if x.covered { 0.68 } else { 0.0 };
+                known + novelty + side * 1.1 + occlusion - (delta.length() - 10.2).abs() * 0.10
+            };
+            score(a).total_cmp(&score(b))
         })
 }
 
@@ -635,79 +675,133 @@ fn drive_illusions(
         return;
     }
     let now = session.elapsed;
-    if session.collapse_active()
+    let active_actor = physical.as_ref().is_some_and(|p| p.active());
+    let here = station::sector_id(player.body.feet);
+    let passive_actor = physical
+        .as_ref()
+        .and_then(|p| p.quiet_sector())
+        .filter(|&at| here != Some(at));
+    let reserved = active_actor
+        && (passive_actor.is_none()
+            || state
+                .current
+                .as_ref()
+                .is_some_and(|chain| chain.actor_sector != passive_actor));
+    if reserved
+        || session.collapse_active()
         || session.resting
         || session.wake_confirmation
         || session.message_left > 1.0
         || ambience.quiet > 0.14
         || ambience.episode.holding_silence()
-        || physical.is_some_and(|p| p.active())
         || old.active()
         || threat.active()
         || session.false_exit.is_some()
         || comfort.ambience_muted
         || comfort.psycho_av < 0.10
         || station::lamp_refuge(session.memory().desk_light, player.body.feet)
-        || session.psychology.value() >= 77.0
+        || session.psychology.value() >= 75.0
     {
-        state.current = None;
+        if state.current.take().is_some() {
+            director.settle_acoustic(now, "interrompida por outra situação", 7.0);
+        }
         return;
     }
     let Ok(view) = camera.single() else { return };
+    let speed = player.body.velocity.xz().length();
+    let closed = !session.progress().exit_unlocked();
     if state.current.is_none() && now >= state.after && now >= state.sample {
         state.sample = now + 1.35;
-        if director.allows(Beat::Sound, now) {
-            let closed = !session.progress().exit_unlocked();
-            if let Some(points) = candidate(&world, closed, *view, director.order) {
-                let ghost = if session.expedition.observer().reality()
-                    == ainda_vivo_core::reality::Reality::False
-                {
-                    Category::FalseReality
-                } else {
-                    Category::Illusion
-                };
-                let roll = next(&mut state.rng);
-                let pattern = if roll < 0.37 {
-                    Pattern::Rush
-                } else if roll < 0.59 {
-                    Pattern::Trail
-                } else if roll < 0.76 {
-                    Pattern::Breath
-                } else if roll < 0.90 {
-                    Pattern::Knock
-                } else {
-                    Pattern::Far
-                };
-                state.current = Some(Echo::new(pattern, ghost, points, state.rng));
-                state.after = now + 92.0 + next(&mut state.rng) * 58.0;
-                state.charged = false;
-                director.claim(Beat::Sound, now);
-            }
+        if director.acoustic_available(now, passive_actor.is_some())
+            && let Some(source) = candidate(
+                &world,
+                closed,
+                *view,
+                director.order,
+                (passive_actor, state.last_source),
+                session.memory().recent_route(),
+            )
+        {
+            let distorted =
+                session.expedition.observer().reality() == ainda_vivo_core::reality::Reality::False;
+            let category = if distorted {
+                Category::FalseReality
+            } else {
+                Category::Illusion
+            };
+            let roll = next(&mut state.rng);
+            let pattern = state.preferences.choose(
+                Opportunity {
+                    speed,
+                    pressure: director.intensity(),
+                    strain: session.psychology.value() / 100.0,
+                    familiar: director.revisit
+                        || session.memory().recent_route()[1..].contains(&Some(source.sector)),
+                    covered: source.covered,
+                    separated_actor: passive_actor.is_some(),
+                    distorted,
+                    armed: session.progress().phase() >= ainda_vivo_core::story::Phase::Electrical,
+                },
+                roll,
+            );
+            let chain = Chain::new(Start {
+                pattern,
+                category,
+                path: source.path,
+                source_sector: source.sector,
+                actor_sector: passive_actor,
+                seed: state.rng,
+            });
+            director.begin_acoustic(now, chain.purpose);
+            state.current = Some(chain);
+            state.last_source = Some(source.sector);
+            state.after = now + 84.0 + next(&mut state.rng) * 55.0;
+            state.charged = false;
         }
     }
-    if let Some(echo) = &mut state.current {
-        let pattern = echo.pattern;
-        let (end, pulse) = echo.tick(
-            time.delta_secs(),
-            *view,
-            player.body.velocity.xz().length(),
-            false,
-        );
+    if let Some(chain) = &mut state.current {
+        let stage = chain.stage;
+        let audible = if stage == Stage::Prepare {
+            let distance = chain.origin.distance(view.translation);
+            let covered = world.occludes(view.translation, chain.origin, !closed);
+            comfort.ambience_volume * comfort.psycho_av > 0.24
+                && distance < if covered { 10.0 } else { 14.0 }
+        } else {
+            chain.audible
+        };
+        let (end, pulse) = chain.tick(time.delta_secs(), *view, speed, audible);
+        if stage != chain.stage {
+            match chain.stage {
+                Stage::Anticipate => director.acoustic_stage("Antecipação", Mood::Anticipation),
+                Stage::Develop => director.acoustic_stage("Desenvolvimento", Mood::Tension),
+                Stage::Prepare => {}
+            }
+        }
+        let pattern = chain.pattern();
         if end {
+            let understood = chain.reaction;
+            let plausible = chain.audible;
             state.current = None;
-            if pattern == Pattern::Rush && next(&mut state.rng) < 0.12 {
-                director.request(Beat::Presence);
+            state.preferences.observe(pattern, plausible, understood);
+            director.settle_acoustic(
+                now,
+                understood.label(),
+                if pattern == Pattern::Rush { 12.0 } else { 7.5 },
+            );
+            // Uma reação legível pode motivar uma contradição posterior. As
+            // pistas e a oportunidade de cada objeto continuam obrigatórias.
+            if matches!(understood, Reaction::Look | Reaction::Approach)
+                && director.revisit
+                && next(&mut state.rng) < 0.36
+            {
+                director.request(Beat::Illusion);
             }
         }
         if let Some(sound) = pulse {
             if !state.charged
                 && matches!(pattern, Pattern::Rush | Pattern::Knock)
                 && sound.at.distance(view.translation) < 9.5
-                && !world.occludes(
-                    view.translation,
-                    sound.at,
-                    session.progress().exit_unlocked(),
-                )
+                && !world.occludes(view.translation, sound.at, !closed)
                 && comfort.ambience_volume * comfort.psycho_av > 0.2
             {
                 session.stimulate(Stimulus::Noise, Origin::External, 0.22);
@@ -722,6 +816,17 @@ fn drive_illusions(
 mod tests {
     use super::*;
     use ainda_vivo_core::collision::Aabb;
+
+    #[test]
+    fn a_diversion_reserves_a_different_sector_from_the_physical_actor() {
+        let world = CollisionWorld(Vec::new());
+        let view = Transform::from_xyz(0.0, 1.62, -6.0)
+            .with_rotation(Quat::from_rotation_y(std::f32::consts::PI));
+        let baseline = candidate(&world, true, view, 0, (None, None), &[]).unwrap();
+        let other = candidate(&world, true, view, 0, (Some(baseline.sector), None), &[]).unwrap();
+        assert_ne!(other.sector, baseline.sector);
+        assert_eq!(station::sector_id(other.path[0]), Some(other.sector));
+    }
 
     #[test]
     fn invisible_chase_is_reproducible_and_has_same_timbres_in_both_realities() {

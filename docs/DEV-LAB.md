@@ -1,6 +1,15 @@
 # Dev Lab do AINDA VIVO
 
-A build experimental v0.0.12-dev.5 inclui o Dev Lab. No pacote Windows, extraia os arquivos e execute **ABRIR DEV LAB.cmd**. No menu ou durante a campanha, pressione **Ctrl+I** para entrar ou voltar. O botão de busca recebe a digitação até **Enter**, **Esc** ou um clique em outro controle.
+A build experimental v0.0.12-dev.6 inclui o Dev Lab. No pacote Windows, extraia os arquivos e execute **ABRIR DEV LAB.cmd**. No menu ou durante a campanha, pressione **Ctrl+I** para entrar ou voltar. O botão de busca recebe a digitação até **Enter**, **Esc** ou um clique em outro controle.
+
+## Laboratório Cognitivo
+
+- Abra **IA → Cenário IA** para ver estado do diretor, objetivo, estratégia, confiança, raio da hipótese, plano, utilidades, rotas e memória episódica. Os guias mostram a rota, a região provável e a sonda de visão.
+- **Desvio**, **Reversão** e **Circuito** iniciam uma caçada ao bot marcado na pista. A câmera permanece livre para assistir ao ensaio. **Caixa** coloca um obstáculo real quando há espaço. **Porta** alterna a barreira e **Gerar ruído** emite um estímulo físico no alvo selecionado.
+- **Pausa IA** suspende o cérebro. **Um passo** avança a simulação em 1/60 s e mantém a pausa. **Limpar memória** apaga pistas e hábitos. **Outra seed** incrementa a seed selecionada e **Repetir seed** reinicia o cenário. Use `--ai-seed 42017` para escolher um valor na abertura.
+- **Rodar matriz** executa os cenários determinísticos e exibe o resultado. **Exportar diagnóstico** salva `inteligencia-presenca.txt` na pasta das capturas do Lab, com os detalhes da matriz quando já executada. O modo `--check-cognition --smoke-report inteligencia.txt` roda a mesma matriz sem carregar o renderizador.
+
+Na campanha com a Presença física, use **E** no relé da Elétrica quando aparecer **conferir via e testar o relé**. O estalo sai do equipamento cerca de 1,45 s depois. O operador ganha tempo para mudar de direção ou ficar em silêncio. A criatura pode investigar o estímulo se conseguir ouvi-lo. A conferência narrativa do relé continua disponível.
 
 ## Som
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## v0.0.12-dev.6 — Inteligência Hostil
+
+- A Presença atualiza aproximações laterais, procura pontos alcançáveis junto a equipamentos e confirma contato com a posição física do operador. Abaixa o ritmo ao perder contato, investiga o último indício e pode retomar a mesma caçada.
+- Visão central e periférica, audição aproximada, memória com confiança e idade, planos de busca e pesos de rotas observadas mudam as escolhas entre observar, investigar, intimidar e interceptar.
+- O relé da Elétrica pode produzir um estalo atrasado. O diretor reserva espaço para caçadas e escolhe sequências ilusórias conforme pressão, setor e reações observáveis.
+- O Laboratório Cognitivo adiciona bots, caixa móvel, avanço de um passo, seeds, memória, matriz de testes e exportação. [Guia](docs/DEV-LAB.md) · [Arquitetura](docs/INTELIGENCIA-HOSTIL-v0.0.12-dev.6.md) · [Handoff](AINDA-VIVO-HANDOFF-v0.0.12-dev.6.md)
+
 ## v0.0.12-dev.5 — Ecos da Caçada
 
 - A Presença usa uma biblioteca original com passadas, apoios, atrito, respiração e voz sintetizada. Os marcadores de animação acionam os sons físicos de caminhada e corrida quadrúpede.

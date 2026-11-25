@@ -115,7 +115,7 @@ pub fn diagnostics(lab: &TestLab) -> String {
     let phase = match h.phase {
         Phase::Idle => b.state.label(),
         Phase::Prepare => "Preparação",
-        Phase::Run => "Corrida quadrúpede",
+        Phase::Run => h.strategy.label(),
         Phase::Brake => "Freada",
         Phase::Rise => "Retorno em pé",
         Phase::Flinch => "Intimidação no contato",
@@ -151,6 +151,7 @@ pub fn hunt_command(active: &mut Active, config: &mut Config, action: HuntComman
             config.lens.pitch = -0.10;
             active.reset_view(&config.lens);
             let lab = &mut active.observer;
+            lab.bot = None;
             lab.automatic = false;
             lab.closed = false;
             lab.paused = false;
@@ -160,7 +161,7 @@ pub fn hunt_command(active: &mut Active, config: &mut Config, action: HuntComman
             } else {
                 lab.hunt.tuning.start
             };
-            lab.brain = Brain::seeded(4141);
+            lab.brain = Brain::seeded(lab.seed.unwrap_or(4141));
             lab.brain.spawn(camera - Vec2::Y * start, 0.0);
             lab.brain.change(
                 State::Threaten,
@@ -183,11 +184,12 @@ pub fn hunt_command(active: &mut Active, config: &mut Config, action: HuntComman
             config.lens.pitch = -0.10;
             active.reset_view(&config.lens);
             let lab = &mut active.observer;
+            lab.bot = None;
             lab.automatic = false;
             lab.paused = false;
             lab.hunt.reset();
             let effect = lab.hunt.contact();
-            lab.brain = Brain::seeded(4141);
+            lab.brain = Brain::seeded(lab.seed.unwrap_or(4141));
             lab.brain.spawn(Vec2::new(-6.38, -3.40), 0.0);
             lab.brain.hunt = Hunt::preview(effect);
         }
