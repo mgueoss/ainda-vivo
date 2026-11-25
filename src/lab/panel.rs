@@ -2,7 +2,10 @@ use super::{
     Action, Knob, Lab, Options, ctrl,
     library::{self, Catalog},
     motion::{self, Mode},
-    observer::{Command as AI, Knob as AiKnob, State as AiState},
+    observer::{
+        Command as AI, HuntCommand as Hunt, HuntKnob, Knob as AiKnob, State as AiState,
+        hunt::Contact,
+    },
     settings::{Category, Config, Lighting, MAX_INSTANCES, Model, Preset, Tab},
 };
 use bevy::{
@@ -57,6 +60,8 @@ pub(super) enum Label {
     Technical,
     Observer,
     ObserverValue(AiKnob),
+    HuntStatus,
+    HuntValue(HuntKnob),
 }
 
 pub(super) fn spawn(commands: &mut Commands, camera: Entity, config: &Config) -> Entity {
@@ -214,6 +219,7 @@ fn inspector(side: &mut ChildSpawnerCommands) {
         button(line, "Luz", Action::SetTab(Tab::Lighting));
         button(line, "Animação", Action::SetTab(Tab::Animation));
         button(line, "IA", Action::SetTab(Tab::Observer));
+        button(line, "Caçada", Action::SetTab(Tab::Hunt));
         button(line, "Ajuda", Action::SetTab(Tab::Help));
     });
     scroll(side).with_children(|list| {
@@ -336,6 +342,32 @@ fn inspector(side: &mut ChildSpawnerCommands) {
             for state in [AiState::Absent].into_iter().chain(AiState::ACTIVE) {
                 button(view, state.label(), Action::Observer(AI::Select(state)));
             }
+        });
+        group(list, Tab::Hunt).with_children(|view| {
+            row(view).with_children(|line| {
+                button(line,"Caçada livre",Action::Hunt(Hunt::Start));
+                button(line,"Ameaça",Action::Hunt(Hunt::Bluff));
+                button(line,"Teste de porta",Action::Hunt(Hunt::DoorTrial));
+            });
+            row(view).with_children(|line| {
+                button(line,"Interromper",Action::Hunt(Hunt::Stop));
+                button(line,"Pausa",Action::Observer(AI::Pause));
+                button(line,"Porta",Action::Observer(AI::Door));
+            });
+            button(view,"Consequências psicológicas",Action::Hunt(Hunt::Psychology));
+            view.spawn((text("",12.0,ACCENT),Label::HuntStatus));
+            for (knob,name,delta) in HuntKnob::ALL {
+                row(view).with_children(|line| {
+                    line.spawn((text(name,12.0,MUTED),Node {flex_grow:1.0,..default()}));
+                    button(line,"−",Action::Hunt(Hunt::Adjust(knob,-delta)));
+                    line.spawn((text("",12.0,INK),Label::HuntValue(knob)));
+                    button(line,"+",Action::Hunt(Hunt::Adjust(knob,delta)));
+                });
+            }
+            section(view,"RESULTADO DO CONTATO");
+            button(view,"Contextual",Action::Hunt(Hunt::Result(None)));
+            for contact in Contact::ALL { button(view,contact.label(),Action::Hunt(Hunt::Result(Some(contact)))); }
+            button(view,"Simular contato selecionado",Action::Hunt(Hunt::Rehearse));
         });
         group(list, Tab::Help).with_children(|view| {
             section(view, "ATALHOS");
@@ -742,6 +774,8 @@ pub(super) fn refresh(
             Action::Observer(AI::Door) => active.observer.closed,
             Action::Observer(AI::Automatic) => active.observer.automatic,
             Action::Observer(AI::Guides) => active.observer.guides,
+            Action::Hunt(Hunt::Result(result)) => active.observer.hunt.selected == result,
+            Action::Hunt(Hunt::Psychology) => active.observer.hunt.psychological,
             Action::Observer(AI::Select(state)) => {
                 active.observer.enabled && active.observer.brain.state == state
             }
@@ -808,6 +842,20 @@ pub(super) fn refresh(
             Label::ObserverValue(knob) => {
                 if config.tab == Tab::Observer {
                     knob.value(active.observer.tuning)
+                } else {
+                    continue;
+                }
+            }
+            Label::HuntStatus => {
+                if config.tab == Tab::Hunt {
+                    super::observer::hunt_diagnostics(&active.observer)
+                } else {
+                    continue;
+                }
+            }
+            Label::HuntValue(knob) => {
+                if config.tab == Tab::Hunt {
+                    knob.value(active.observer.hunt.tuning)
                 } else {
                     continue;
                 }

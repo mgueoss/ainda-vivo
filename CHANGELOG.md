@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.0.12-dev.4 — A Caçada
+
+- A Presença física pode preparar uma arrancada ou desistir da ameaça. A corrida usa as animações quadrúpedes existentes, adapta a velocidade às curvas e abandona rastros perdidos.
+- O contato pode ser ilusório, intimidar, desorientar, capturar silenciosamente ou terminar em retirada. A captura respeita a elegibilidade e o posto de Despertar existentes.
+- A aba **Caçada** do Dev Lab testa corrida livre, porta, ameaça, interrupção e os cinco resultados de contato em uma sessão isolada. [Guia](docs/DEV-LAB.md) · [Handoff](AINDA-VIVO-HANDOFF-v0.0.12-dev.4.md)
+
 ## v0.0.12-dev.3 — O Observador
 
 - Presença experimental com visão obstruída por paredes e portas, audição aproximada, memória de curta duração e navegação física pelos setores da Estação.

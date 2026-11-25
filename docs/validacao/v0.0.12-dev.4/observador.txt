@@ -1,0 +1,6 @@
+AINDA VIVO v0.0.12-dev.4
+Observador Windows: PASS
+Quadros: 2880
+Manifestações: 1
+Distância percorrida em campanha: 11.55 m
+Falhas: []

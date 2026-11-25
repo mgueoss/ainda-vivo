@@ -1,0 +1,13 @@
+cargo fmt --all -- --check — PASS
+cargo clippy --locked --offline --workspace --all-targets --all-features -- -D warnings — PASS
+cargo build --locked --offline -p ainda-vivo --features dev-lab — PASS
+cargo check --locked --offline -p ainda-vivo --no-default-features — PASS
+test atmosphere::director::tests::hunt_window_requires_progress_escape_and_a_long_interval ... ok
+test lab::observer::hunt::tests::five_outcomes_are_bounded_and_capture_keeps_the_real_checkpoint ... ok
+test lab::observer::hunt::tests::bluff_and_safety_never_become_contacts ... ok
+test lab::observer::hunt::tests::stationary_contact_has_continuous_motion_and_synced_intense_stride ... ok
+test lab::observer::hunt::tests::running_player_can_escape_and_door_can_break_the_trail ... ok
+test result: ok. 42 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.02s
+test result: ok. 33 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 0 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s
+test result: ok. 3 passed; 0 failed; 0 ignored; 0 measured; 0 filtered out; finished in 0.00s

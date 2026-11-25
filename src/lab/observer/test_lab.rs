@@ -2,6 +2,7 @@ use super::{
     Brain, Footstep, Frame, HUMAN, Nav, Noise, Portal, Pose, State, Tuning, View, Zone, forward,
     point, presentation,
 };
+use super::{hunt, hunt_lab::HuntLab};
 use crate::lab::{Active, Lab, library::Catalog, room, settings::Config};
 use ainda_vivo_core::collision::Aabb;
 use bevy::{
@@ -83,6 +84,7 @@ pub struct TestLab {
     pub target: usize,
     pub brain: Brain,
     pub tuning: Tuning,
+    pub hunt: HuntLab,
     stage: Option<Stage>,
     nav: Option<Nav>,
     pulse: Option<Noise>,
@@ -190,6 +192,7 @@ pub fn command(active: &mut Active, config: &mut Config, action: Command) {
             lab.footstep = Footstep::default();
             lab.pulse = None;
             lab.paused = false;
+            lab.hunt.reset();
         }
         Command::Automatic => {
             lab.automatic = !lab.automatic;
@@ -199,7 +202,11 @@ pub fn command(active: &mut Active, config: &mut Config, action: Command) {
         }
         Command::Door => {
             let occupied = gate()
-                .expanded(HUMAN)
+                .expanded(if lab.brain.hunt.low() {
+                    hunt::half_at(lab.brain.yaw)
+                } else {
+                    HUMAN
+                })
                 .ray(point(lab.brain.pos).with_y(1.14), Vec3::X, 0.0)
                 .is_some()
                 || gate()
@@ -378,6 +385,11 @@ pub fn update_lab(
     let Some(stage) = &lab.stage else { return };
     let nav = lab.nav.get_or_insert_with(|| lab_nav(&active.room.solids));
     if !lab.paused {
+        lab.hunt.session.elapsed += time.delta_secs();
+        lab.hunt.session.psychology.step(
+            time.delta_secs(),
+            ainda_vivo_core::psychology::Recovery::None,
+        );
         let footstep = lab.footstep.sample(
             active.walker.feet.xz(),
             active.walker.velocity.xz().length(),
@@ -399,7 +411,11 @@ pub fn update_lab(
         }
         lab.brain
             .step(time.delta_secs(), &frame, lab.tuning, lab.automatic);
+        if std::mem::take(&mut lab.brain.hunt.pending) {
+            lab.brain.hunt.result = Some(lab.hunt.contact());
+        }
     }
+    lab.hunt.distance = lab.brain.pos.distance(view.eye.xz());
     let b = &lab.brain;
     let visibility = |v| {
         if v {
@@ -414,7 +430,7 @@ pub fn update_lab(
         presentation(b, true, lab.paused),
         Transform::from_translation(point(b.pos).with_y(0.022))
             .with_rotation(Quat::from_rotation_y(b.yaw)),
-        visibility(b.state != State::Absent),
+        visibility(b.state != State::Absent && !b.hunt.hidden()),
     ));
     if lab.guides {
         draw(lab, &mut meshes);

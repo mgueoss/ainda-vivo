@@ -1,0 +1,9 @@
+AINDA VIVO v0.0.12-dev.4
+smoke-collapse: PASS
+frames: 8545
+Refuge reached with 56.45s remaining
+R at 0.75s remaining in False Reality
+Breathing / heartbeat sinks: [false, false]
+Farewell stages: 5
+Captures: 0
+Failures: []

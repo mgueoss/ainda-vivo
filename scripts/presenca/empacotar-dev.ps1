@@ -38,6 +38,7 @@ use Ctrl+I para entrar e voltar. Na aba Animação, escolha um clipe,
 teste a Pista ou abra a Aproximação em primeira pessoa. Para testar
 percepção e navegação, abra IA > Cenário IA. Fora do laboratório, F5
 solicita a troca entre a representação anterior e a Presença física.
+Para ensaiar corrida, retirada e contato, abra Caçada > Caçada livre.
 Para colocar a Presença 3D passiva no corredor inicial, execute
 .\ainda-vivo.exe --dev-lab --lab-campaign-preview pelo terminal.
 

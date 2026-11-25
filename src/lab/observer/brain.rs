@@ -1,3 +1,4 @@
+use super::hunt::Hunt;
 use super::nav::{HUMAN, LOW, Nav, point};
 use bevy::prelude::*;
 
@@ -43,19 +44,6 @@ impl State {
             Self::Retreat => "Retirada",
         }
     }
-}
-
-/// Pedidos reservados para uma etapa que possua regras de perseguição/contato.
-#[derive(Clone, Copy)]
-#[cfg_attr(
-    not(test),
-    expect(dead_code, reason = "Contratos reservados para uma etapa posterior.")
-)]
-pub enum Intent {
-    Observe,
-    Pursue,
-    Contact,
-    Capture,
 }
 
 #[derive(Clone, Copy)]
@@ -131,10 +119,11 @@ pub struct Brain {
     pub path: Vec<Vec2>,
     pub waypoint: usize,
     pub moving: f32,
+    pub hunt: Hunt,
     rng: u32,
     sample: f32,
     exposure: f32,
-    visible: bool,
+    pub(super) visible: bool,
     noticed: f32,
     limit: f32,
     retry_at: f32,
@@ -147,10 +136,10 @@ pub struct Brain {
 pub fn forward(yaw: f32) -> Vec2 {
     Vec2::new(yaw.sin(), yaw.cos())
 }
-fn angle(d: Vec2) -> f32 {
+pub(super) fn angle(d: Vec2) -> f32 {
     d.x.atan2(d.y)
 }
-fn turn(current: f32, desired: f32, amount: f32) -> f32 {
+pub(super) fn turn(current: f32, desired: f32, amount: f32) -> f32 {
     let diff = (desired - current + std::f32::consts::PI).rem_euclid(std::f32::consts::TAU)
         - std::f32::consts::PI;
     current + diff.clamp(-amount, amount)
@@ -176,6 +165,9 @@ impl Brain {
     }
 
     pub fn low(&self) -> bool {
+        if self.hunt.active() {
+            return self.hunt.low();
+        }
         self.state == State::Threaten && (1.05..2.15).contains(&(self.clock - self.entered))
     }
 
@@ -196,11 +188,13 @@ impl Brain {
         self.change(State::Rest, "janela de manifestação", 1.4, None);
     }
 
-    pub fn accepts(&self, intent: Intent) -> bool {
-        matches!(intent, Intent::Observe)
-    }
-
-    fn change(&mut self, state: State, reason: &'static str, duration: f32, goal: Option<Vec2>) {
+    pub(super) fn change(
+        &mut self,
+        state: State,
+        reason: &'static str,
+        duration: f32,
+        goal: Option<Vec2>,
+    ) {
         self.recent.rotate_right(1);
         self.recent[0] = self.state;
         self.state = state;
@@ -358,7 +352,7 @@ impl Brain {
         self.change(state, "controle manual", duration, goal);
     }
 
-    fn retreat(&mut self, f: &Frame, why: &'static str, from: Vec2) {
+    pub(super) fn retreat(&mut self, f: &Frame, why: &'static str, from: Vec2) {
         let target = self
             .pocket(f, from)
             .or_else(|| {
@@ -534,9 +528,16 @@ impl Brain {
         if self.sample >= 0.14 {
             let elapsed = std::mem::take(&mut self.sample);
             self.sample(f, config, elapsed);
-            if automatic {
+            if automatic && !self.hunt.active() {
                 self.decide(f, config);
             }
+        }
+        if self.hunt.active() {
+            let mut hunt = std::mem::take(&mut self.hunt);
+            self.head = turn(self.head, 0.0, dt * 2.0);
+            hunt.advance(self, dt, f);
+            self.hunt = hunt;
+            return;
         }
         let target = self.seen.or(self.heard).map(|m| m.at);
         if matches!(self.state, State::Watch | State::Peek | State::Threaten)
@@ -726,11 +727,6 @@ mod tests {
         assert!(
             matches!(b.state, State::Follow | State::Retreat)
                 || b.state == State::Absent && b.recent.contains(&State::Retreat)
-        );
-        assert!(
-            !b.accepts(Intent::Capture)
-                && !b.accepts(Intent::Pursue)
-                && !b.accepts(Intent::Contact)
         );
         for _ in 0..70 {
             b.step(0.15, &f, settings, false);

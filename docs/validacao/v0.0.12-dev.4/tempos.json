@@ -1,0 +1,92 @@
+[
+  {
+    "Name": "lab-dev3-a",
+    "Result": "PASS",
+    "ExitCode": 0,
+    "Frames": "1492",
+    "WallSeconds": 10.151,
+    "StudioMedianMs": "6.1505",
+    "Adapter": "2026-11-25T01:13:23.175098Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }"
+  },
+  {
+    "Name": "lab-dev4-a",
+    "Result": "PASS",
+    "ExitCode": 0,
+    "Frames": "1492",
+    "WallSeconds": 10.13,
+    "StudioMedianMs": "6.1008",
+    "Adapter": "2026-11-25T01:13:33.328165Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }"
+  },
+  {
+    "Name": "lab-dev4-b",
+    "Result": "PASS",
+    "ExitCode": 0,
+    "Frames": "1492",
+    "WallSeconds": 10.113,
+    "StudioMedianMs": "6.2165",
+    "Adapter": "2026-11-25T01:13:43.476811Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }"
+  },
+  {
+    "Name": "lab-dev3-b",
+    "Result": "PASS",
+    "ExitCode": 0,
+    "Frames": "1492",
+    "WallSeconds": 10.129,
+    "StudioMedianMs": "6.111",
+    "Adapter": "2026-11-25T01:13:53.587992Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }"
+  },
+  {
+    "Name": "observador",
+    "Result": "PASS",
+    "ExitCode": 0,
+    "Frames": "",
+    "WallSeconds": 7.069,
+    "StudioMedianMs": "",
+    "Adapter": "2026-11-25T01:14:03.718773Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }"
+  },
+  {
+    "Name": "movimentos",
+    "Result": "PASS",
+    "ExitCode": 0,
+    "Frames": "",
+    "WallSeconds": 4.087,
+    "StudioMedianMs": "",
+    "Adapter": "2026-11-25T01:14:10.797025Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }"
+  },
+  {
+    "Name": "vistoria-audio",
+    "Result": "PASS",
+    "ExitCode": 0,
+    "Frames": "12260",
+    "WallSeconds": 75.275,
+    "StudioMedianMs": "",
+    "Adapter": "2026-11-25T01:14:14.886630Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }"
+  },
+  {
+    "Name": "realidade",
+    "Result": "PASS",
+    "ExitCode": 0,
+    "Frames": "2696",
+    "WallSeconds": 17.384,
+    "StudioMedianMs": "",
+    "Adapter": "2026-11-25T01:15:30.168649Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }"
+  },
+  {
+    "Name": "ecos",
+    "Result": "PASS",
+    "ExitCode": 0,
+    "Frames": "2735",
+    "WallSeconds": 17.59,
+    "StudioMedianMs": "",
+    "Adapter": "2026-11-25T01:15:47.560788Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }"
+  },
+  {
+    "Name": "colapso",
+    "Result": "PASS",
+    "ExitCode": 0,
+    "Frames": "8545",
+    "WallSeconds": 52.835,
+    "StudioMedianMs": "",
+    "Adapter": "2026-11-25T01:16:05.202374Z  INFO bevy_render::renderer: AdapterInfo { name: \"NVIDIA GeForce GTX 1660 SUPER\", vendor: 4318, device: 8644, device_type: DiscreteGpu, driver: \"NVIDIA\", driver_info: \"610.88\", backend: Vulkan }"
+  }
+]

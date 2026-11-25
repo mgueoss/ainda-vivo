@@ -81,9 +81,9 @@ pub struct VhsImage {
 
 impl VhsImage {
     #[cfg(feature = "dev-lab")]
-    pub fn lab(mode: VhsMode, time: f32) -> Self {
+    pub fn lab(mode: VhsMode, time: f32, pulse: f32) -> Self {
         Self {
-            parameters: Vec4::new(mode.strength(), time, 0.0, 0.0),
+            parameters: Vec4::new((mode.strength() + pulse).min(1.0), time, 0.0, 0.0),
         }
     }
 
@@ -127,7 +127,11 @@ pub fn update(
         }
         return;
     }
-    let parameters = Vec4::new(comfort.vhs.strength(), session.elapsed, 0.0, 0.0);
+    let strength = comfort.vhs.strength();
+    #[cfg(feature = "dev-lab")]
+    let strength =
+        (strength + session.hunt_effect.tape(session.elapsed) * comfort.psycho_av).min(1.0);
+    let parameters = Vec4::new(strength, session.elapsed, 0.0, 0.0);
     if let Some(mut current) = settings {
         if current.parameters != parameters {
             current.parameters = parameters;

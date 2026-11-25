@@ -48,6 +48,7 @@ pub(super) struct Options {
     smoke: bool,
     motion_smoke: bool,
     observer_smoke: bool,
+    hunt_smoke: bool,
     record_motion: bool,
     captures: Option<PathBuf>,
 }
@@ -63,8 +64,9 @@ impl Options {
         };
         let motion_smoke = has("--smoke-motion");
         let observer_smoke = has("--smoke-observer");
-        let physical = has("--presence-physical") || observer_smoke;
-        let smoke = has("--smoke-lab") || motion_smoke || observer_smoke;
+        let hunt_smoke = has("--smoke-hunt");
+        let physical = has("--presence-physical") || observer_smoke || hunt_smoke;
+        let smoke = has("--smoke-lab") || motion_smoke || observer_smoke || hunt_smoke;
         let enabled = has("--dev-lab") || smoke || physical;
         let local =
             std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("AindaVivo/dev-lab"));
@@ -88,6 +90,7 @@ impl Options {
             smoke,
             motion_smoke,
             observer_smoke,
+            hunt_smoke,
             record_motion: motion_smoke && has("--lab-record-motion"),
         }
     }
@@ -143,6 +146,7 @@ impl Plugin for LabPlugin {
             .insert_resource(observer::Campaign::new(physical))
             .add_message::<Action>()
             .add_message::<motion::MotionEvent>()
+            .add_message::<observer::hunt::Signal>()
             .add_systems(Startup, library::begin_import)
             .add_systems(
                 PreUpdate,
@@ -150,6 +154,7 @@ impl Plugin for LabPlugin {
                     qa::inject_keys,
                     motion_qa::open,
                     observer::qa::keys,
+                    observer::hunt_qa::keys,
                     switch.in_set(crate::app::BeforeCampaign),
                 )
                     .chain()
@@ -165,6 +170,12 @@ impl Plugin for LabPlugin {
                     .run_if(campaign_running),
             )
             .add_systems(Update, library::animate_observer)
+            .add_systems(
+                Update,
+                crate::atmosphere::sound::emit_hunt
+                    .after(observer::update_campaign)
+                    .run_if(campaign_running),
+            )
             .add_systems(
                 Update,
                 (
@@ -195,7 +206,13 @@ impl Plugin for LabPlugin {
             )
             .add_systems(Last, (qa::verify, motion_qa::verify));
         let options = app.world().resource::<Options>();
-        if options.observer_smoke {
+        if options.hunt_smoke {
+            app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                std::time::Duration::from_secs_f64(1.0 / 60.0),
+            ))
+            .insert_resource(observer::hunt_qa::Check::new())
+            .add_systems(Last, observer::hunt_qa::verify);
+        } else if options.observer_smoke {
             app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
                 std::time::Duration::from_secs_f64(1.0 / 60.0),
             ))
@@ -551,6 +568,7 @@ enum Action {
     Displace,
     FollowGaze,
     Observer(observer::Command),
+    Hunt(observer::HuntCommand),
     Step(i8),
     Play,
     Repeat,
@@ -816,6 +834,7 @@ fn actions(
                 active.playback.displacement = !active.playback.displacement;
             }
             Action::Observer(command) => observer::command(active, &mut config, command),
+            Action::Hunt(command) => observer::hunt_command(active, &mut config, command),
             Action::FollowGaze => {
                 if active.playback.follow_gaze {
                     active.playback.follow_gaze = false;

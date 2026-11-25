@@ -88,9 +88,54 @@ pub struct Director {
     history: [Option<Beat>; 6],
     requested: Option<Cue>,
     quiet_until: f32,
+    #[cfg(feature = "dev-lab")]
+    hunt_after: f32,
 }
 
 impl Director {
+    #[cfg(feature = "dev-lab")]
+    pub(crate) fn hunt_window(
+        &mut self,
+        now: f32,
+        phase: Phase,
+        strain: f32,
+        speed: f32,
+        escape: bool,
+    ) -> Option<(f32, bool)> {
+        if now < 56.0
+            || now < self.hunt_after
+            || phase < Phase::Electrical
+            || strain >= 78.0
+            || !escape
+            || now < self.quiet_until
+        {
+            return None;
+        }
+        self.hunt_after = now + 22.0;
+        let recent = self
+            .history
+            .iter()
+            .flatten()
+            .filter(|beat| now - beat.at < 28.0 && beat.cue == Cue::Presence)
+            .count();
+        let chance = if speed > 2.7 { 0.47 } else { 0.30 };
+        if recent > 1 || self.random() > chance {
+            return None;
+        }
+        self.hunt_after = now + 115.0 + self.random() * 48.0;
+        let prepare = 1.65 + self.random() * 1.35;
+        Some((prepare, self.random() < 0.38))
+    }
+
+    #[cfg(feature = "dev-lab")]
+    pub(crate) fn hunt_contact(
+        &mut self,
+        eligible: bool,
+        strain: f32,
+    ) -> crate::lab::observer::hunt::Contact {
+        crate::lab::observer::hunt::select_contact(self.random(), eligible, strain)
+    }
+
     fn new(attempt: u64, seed: u32) -> Self {
         Self {
             attempt,
@@ -414,6 +459,37 @@ pub fn update(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[cfg(feature = "dev-lab")]
+    #[test]
+    fn hunt_window_requires_progress_escape_and_a_long_interval() {
+        let mut director = (1..120)
+            .find_map(|seed| {
+                let mut candidate = Director::new(1, seed);
+                candidate
+                    .hunt_window(70.0, Phase::Return, 30.0, 3.3, true)
+                    .map(|_| candidate)
+            })
+            .expect("há seeds com oportunidade");
+        assert!(
+            director
+                .hunt_window(95.0, Phase::Return, 30.0, 3.3, true)
+                .is_none()
+        );
+        director.hunt_after = 0.0;
+        for (now, phase, strain, escape) in [
+            (45.0, Phase::Return, 30.0, true),
+            (80.0, Phase::Baseline, 30.0, true),
+            (80.0, Phase::Return, 90.0, true),
+            (80.0, Phase::Return, 30.0, false),
+        ] {
+            assert!(
+                director
+                    .hunt_window(now, phase, strain, 4.5, escape)
+                    .is_none()
+            );
+        }
+    }
 
     fn at(elapsed: f32, sector: u8) -> Context {
         Context {

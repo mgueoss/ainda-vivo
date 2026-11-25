@@ -366,6 +366,7 @@ pub(super) fn walk(
     time: Res<Time<Fixed>>,
     keys: Res<ButtonInput<KeyCode>>,
     bindings: Res<Preferences>,
+    comfort: Res<crate::app::Comfort>,
 ) {
     let Some(active) = lab.active.as_mut() else {
         return;
@@ -382,6 +383,10 @@ pub(super) fn walk(
         }
     };
     command.yaw = config.lens.yaw;
+    if active.observer.enabled && active.observer.hunt.psychological && comfort.psycho_motion {
+        let session = &active.observer.hunt.session;
+        command.movement *= 1.0 - session.hunt_effect.motion(session.elapsed) * comfort.psycho_av;
+    }
     command.jump = std::mem::take(&mut active.jump);
     let gate = active.observer.solid();
     if let Some(gate) = gate {
@@ -456,6 +461,7 @@ pub(super) fn present(
     mut key: KeyView,
     mut torch: TorchView,
     mut grid: Query<&mut Visibility, (With<Grid>, Without<LabTorch>)>,
+    comfort: Res<crate::app::Comfort>,
 ) {
     let Some(active) = lab.active.as_mut() else {
         return;
@@ -477,16 +483,18 @@ pub(super) fn present(
     ambient.brightness = light.fill;
     exposure.ev100 = light.exposure;
     let mode = [VhsMode::Off, VhsMode::Soft, VhsMode::Strong][light.vhs as usize];
+    let effect = &active.observer.hunt.session;
+    let tape = effect.hunt_effect.tape(effect.elapsed) * comfort.psycho_av;
     match (mode, vhs) {
         (VhsMode::Off, Some(_)) => {
             commands.entity(entity).remove::<VhsImage>();
         }
         (VhsMode::Off, None) => {}
-        (_, Some(mut current)) => *current = VhsImage::lab(mode, time.elapsed_secs()),
+        (_, Some(mut current)) => *current = VhsImage::lab(mode, time.elapsed_secs(), tape),
         (_, None) => {
             commands
                 .entity(entity)
-                .insert(VhsImage::lab(mode, time.elapsed_secs()));
+                .insert(VhsImage::lab(mode, time.elapsed_secs(), tape));
         }
     }
     match (light.fog, fog.is_some()) {

@@ -5,6 +5,7 @@ use std::{cmp::Reverse, collections::BinaryHeap};
 const CELL: f32 = 0.8;
 pub const HUMAN: Vec3 = Vec3::new(0.50, 1.12, 0.50);
 pub const LOW: Vec3 = Vec3::new(0.68, 0.65, 1.24);
+const LOW_GRID: Vec3 = Vec3::new(LOW.x, LOW.y, LOW.x);
 const EDGES: [IVec2; 4] = [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y];
 
 #[derive(Clone, Copy)]
@@ -31,7 +32,7 @@ pub struct Nav {
     zones: Vec<Zone>,
     portals: Vec<Portal>,
     room: Vec<Option<usize>>,
-    edges: Vec<u8>,
+    edges: [Vec<u8>; 2],
     origin: Vec2,
     size: IVec2,
     pub(crate) solids: Vec<Aabb>,
@@ -71,7 +72,7 @@ impl Nav {
             zones,
             portals,
             room: vec![None; (size.x * size.y) as usize],
-            edges: vec![0; (size.x * size.y) as usize],
+            edges: std::array::from_fn(|_| vec![0; (size.x * size.y) as usize]),
             origin,
             size,
             solids,
@@ -79,30 +80,34 @@ impl Nav {
         };
         for i in 0..nav.room.len() {
             nav.room[i] = nav.sector(nav.center(i));
-            nav.edges[i] = if nav.room[i].is_some() { 15 } else { 0 };
+            let edge = if nav.room[i].is_some() { 15 } else { 0 };
+            nav.edges[0][i] = edge;
+            nav.edges[1][i] = edge;
         }
         // Rasteriza apenas os quadrados atingidos por cada obstáculo expandido.
         // Inclui as arestas, mesmo quando a parede é mais fina que uma célula.
-        for &solid in &nav.solids {
-            let bounds = hull(solid, HUMAN);
-            let y = HUMAN.y + 0.022;
-            if y < bounds.min.y || y > bounds.max.y {
-                continue;
-            }
-            let from = nav
-                .coord(bounds.min.xz() - Vec2::splat(CELL))
-                .max(IVec2::ZERO);
-            let to = nav
-                .coord(bounds.max.xz() + Vec2::splat(CELL))
-                .min(size - IVec2::ONE);
-            for z in from.y..=to.y {
-                for x in from.x..=to.x {
-                    let cell = IVec2::new(x, z);
-                    let i = nav.index(cell).unwrap();
-                    let a = point(nav.center(i)).with_y(y);
-                    for (e, d) in EDGES.into_iter().enumerate() {
-                        if hit(bounds, a, a + point(d.as_vec2()) * CELL) {
-                            nav.edges[i] &= !(1 << e);
+        for (profile, &half) in [HUMAN, LOW_GRID].iter().enumerate() {
+            for &solid in &nav.solids {
+                let bounds = hull(solid, half);
+                let y = half.y + 0.022;
+                if y < bounds.min.y || y > bounds.max.y {
+                    continue;
+                }
+                let from = nav
+                    .coord(bounds.min.xz() - Vec2::splat(CELL))
+                    .max(IVec2::ZERO);
+                let to = nav
+                    .coord(bounds.max.xz() + Vec2::splat(CELL))
+                    .min(size - IVec2::ONE);
+                for z in from.y..=to.y {
+                    for x in from.x..=to.x {
+                        let cell = IVec2::new(x, z);
+                        let i = nav.index(cell).unwrap();
+                        let a = point(nav.center(i)).with_y(y);
+                        for (e, d) in EDGES.into_iter().enumerate() {
+                            if hit(bounds, a, a + point(d.as_vec2()) * CELL) {
+                                nav.edges[profile][i] &= !(1 << e);
+                            }
                         }
                     }
                 }
@@ -162,15 +167,22 @@ impl Nav {
             })
     }
 
-    fn link(&self, a: usize, b: usize, at: Vec2, closed: bool) -> bool {
+    fn link(&self, a: usize, b: usize, segment: (Vec2, Vec2), closed: bool, half: Vec3) -> bool {
         a == b
             || self.portals.iter().any(|&p| {
+                let (from, to) = segment;
+                let perpendicular = if from.x != to.x {
+                    (p.at.y - from.y).abs()
+                } else {
+                    (p.at.x - from.x).abs()
+                };
                 p.rooms.contains(&a)
                     && p.rooms.contains(&b)
-                    && p.height >= HUMAN.y * 2.0
-                    && p.width > HUMAN.x * 2.0
+                    && p.height >= half.y * 2.0
+                    && p.width > half.x * 2.0
                     && !self.portal_gate(p, closed)
-                    && p.at.distance(at) <= p.width * 0.5 - HUMAN.x + 0.02
+                    && point((from + to) * 0.5 - p.at).length() <= p.width * 0.5
+                    && perpendicular <= p.width * 0.5 - half.x + 0.02
             })
     }
 
@@ -198,7 +210,7 @@ impl Nav {
         0.0
     }
 
-    fn snap(&self, at: Vec2, closed: bool) -> Option<usize> {
+    fn snap(&self, at: Vec2, closed: bool, profile: usize, half: Vec3) -> Option<usize> {
         let c = self.coord(at);
         let sector = self.sector(at)?;
         (-1..=1)
@@ -206,8 +218,8 @@ impl Nav {
             .filter_map(|cell| self.index(cell))
             .filter(|&i| {
                 self.room[i] == Some(sector)
-                    && self.edges[i] != 0
-                    && self.clear_body(at, self.center(i), HUMAN, closed)
+                    && self.edges[profile][i] != 0
+                    && self.clear_body(at, self.center(i), half, closed)
             })
             .min_by(|&a, &b| {
                 self.center(a)
@@ -217,12 +229,29 @@ impl Nav {
     }
 
     pub fn route(&self, from: Vec2, to: Vec2, closed: bool, path: &mut Vec<Vec2>) -> bool {
+        self.plan(from, to, closed, false, path)
+    }
+
+    pub fn plan(
+        &self,
+        from: Vec2,
+        to: Vec2,
+        closed: bool,
+        low: bool,
+        path: &mut Vec<Vec2>,
+    ) -> bool {
         path.clear();
-        let (Some(start), Some(end)) = (self.snap(from, closed), self.snap(to, closed)) else {
+        let profile = usize::from(low);
+        let half = if low { LOW_GRID } else { HUMAN };
+        let edges = &self.edges[profile];
+        let (Some(start), Some(end)) = (
+            self.snap(from, closed, profile, half),
+            self.snap(to, closed, profile, half),
+        ) else {
             return false;
         };
-        let mut score = vec![u16::MAX; self.edges.len()];
-        let mut parent = vec![start; self.edges.len()];
+        let mut score = vec![u16::MAX; edges.len()];
+        let mut parent = vec![start; edges.len()];
         let mut queue = BinaryHeap::new();
         score[start] = 0;
         queue.push(Reverse((0, 0, start)));
@@ -245,7 +274,7 @@ impl Nav {
             let cell = self.cell(i);
             let a = self.center(i);
             for (edge, direction) in EDGES.into_iter().enumerate() {
-                if self.edges[i] & (1 << edge) == 0 {
+                if edges[i] & (1 << edge) == 0 {
                     continue;
                 }
                 let next = cell + direction;
@@ -253,13 +282,13 @@ impl Nav {
                 let Some(room) = self.room[j] else { continue };
                 let b = self.center(j);
                 if cost + 1 >= score[j]
-                    || !self.link(self.room[i].unwrap(), room, (a + b) * 0.5, closed)
+                    || !self.link(self.room[i].unwrap(), room, (a, b), closed, half)
                     || closed
                         && self.gate.is_some_and(|g| {
                             hit(
-                                hull(g, HUMAN),
-                                point(a).with_y(1.142),
-                                point(b).with_y(1.142),
+                                hull(g, half),
+                                point(a).with_y(half.y + 0.022),
+                                point(b).with_y(half.y + 0.022),
                             )
                         })
                 {

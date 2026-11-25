@@ -1,0 +1,6 @@
+AINDA VIVO v0.0.12-dev.4
+Caçada Windows: PASS
+Quadros: 1390
+Pico no Lab: 4.950 m/s
+Marcadores em campanha: 14 mãos, 12 pés
+Falhas: []

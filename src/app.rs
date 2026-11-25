@@ -36,6 +36,8 @@ pub struct Session {
     pub resting: bool,
     pub farewell: Option<f32>,
     pub critical_hint: bool,
+    #[cfg(feature = "dev-lab")]
+    pub(crate) hunt_effect: crate::lab::observer::hunt::Effect,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -61,6 +63,8 @@ impl Default for Session {
             resting: false,
             farewell: None,
             critical_hint: false,
+            #[cfg(feature = "dev-lab")]
+            hunt_effect: default(),
         }
     }
 }
@@ -195,6 +199,10 @@ pub fn awaken(session: &mut Session, player: &mut LocalPlayer) {
             *player = player_at_post(post);
             session.screen = Screen::Playing;
             session.perception_revision += 1;
+            #[cfg(feature = "dev-lab")]
+            {
+                session.hunt_effect = default();
+            }
             session.false_exit = None;
             session.prompt.clear();
             session.say("Registro retomado no posto da Elétrica.");

@@ -270,6 +270,7 @@ pub(super) enum Tab {
     Lighting,
     Animation,
     Observer,
+    Hunt,
     Help,
 }
 

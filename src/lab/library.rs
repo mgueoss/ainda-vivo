@@ -1094,13 +1094,14 @@ pub(super) fn animate_observer(
     lab: Res<Lab>,
     time: Res<Time>,
     mut animators: Query<(Entity, &mut AnimationPlayer, &mut Player)>,
-    roots: Query<&Pose>,
+    roots: Query<(&Pose, &Transform)>,
+    mut signals: MessageWriter<super::observer::hunt::Signal>,
 ) {
     let Some(import) = &catalog.import else {
         return;
     };
     for (entity, mut player, mut state) in &mut animators {
-        let Ok(pose) = roots.get(state.owner) else {
+        let Ok((pose, transform)) = roots.get(state.owner) else {
             continue;
         };
         if pose.paused || (!pose.lab && lab.active.is_some()) {
@@ -1122,17 +1123,40 @@ pub(super) fn animate_observer(
             state.clock = Clock::default();
         }
         let dt = time.delta_secs();
+        let mut marker = |event| {
+            use super::observer::hunt::{Cue, Signal};
+            if pose.lab || !pose.hunting || !matches!(pose.clip, 26..=28) {
+                return;
+            }
+            let (cue, lateral, depth) = match event {
+                motion::EventKind::FootLeft => (Cue::Foot, 0.23, -0.75),
+                motion::EventKind::FootRight => (Cue::Foot, -0.23, -0.75),
+                motion::EventKind::HandLeft => (Cue::Hand, 0.27, 0.47),
+                motion::EventKind::HandRight => (Cue::Hand, -0.27, 0.47),
+                _ => return,
+            };
+            signals.write(Signal {
+                cue,
+                at: transform.transform_point(Vec3::new(lateral, 0.08, depth)),
+            });
+        };
         if let Some(phase) = pose.sample {
-            state
-                .clock
-                .seek(clip.duration * phase, &clip.motion, clip.duration);
+            let at = clip.duration * phase;
+            if pose.clip == 26 && at > state.clock.time {
+                let delta = at - state.clock.time;
+                state
+                    .clock
+                    .advance(delta, &clip.motion, clip.duration, false, &mut marker);
+            } else {
+                state.clock.seek(at, &clip.motion, clip.duration);
+            }
         } else {
             state.clock.advance(
                 dt * pose.speed,
                 &clip.motion,
                 clip.duration,
                 clip.motion.repeat,
-                |_| {},
+                marker,
             );
         }
         dirty |= !state.fade.from.is_empty();

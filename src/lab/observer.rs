@@ -1,4 +1,7 @@
 mod brain;
+pub(crate) mod hunt;
+mod hunt_lab;
+pub(super) mod hunt_qa;
 mod nav;
 pub(super) mod qa;
 mod test_lab;
@@ -18,7 +21,8 @@ use crate::{
 use ainda_vivo_core::{collision::Aabb, story::Action};
 use bevy::prelude::*;
 pub(crate) use brain::State;
-use brain::{Brain, Frame, Intent, Noise, Tuning, View, forward, player_sees};
+use brain::{Brain, Frame, Noise, Tuning, View, angle, forward, player_sees};
+pub(super) use hunt_lab::{HuntCommand, HuntKnob, diagnostics as hunt_diagnostics, hunt_command};
 use nav::{HUMAN, Nav, Portal, Zone, point};
 pub(super) use test_lab::{Command, Knob, TestLab, command, update_lab};
 
@@ -29,6 +33,7 @@ pub(super) struct Pose {
     pub speed: f32,
     pub paused: bool,
     pub lab: bool,
+    pub hunting: bool,
 }
 
 impl Pose {
@@ -39,6 +44,7 @@ impl Pose {
             speed: 1.0,
             paused: false,
             lab,
+            hunting: false,
         }
     }
 }
@@ -48,6 +54,11 @@ fn presentation(brain: &Brain, lab: bool, paused: bool) -> Pose {
         paused,
         ..Pose::new(lab)
     };
+    if brain.hunt.active() {
+        (pose.clip, pose.sample, pose.speed) = brain.hunt.animation(brain.moving);
+        pose.hunting = true;
+        return pose;
+    }
     if brain.moving > 0.01 {
         let (clip, nominal) = if brain.state == State::Approach {
             (19, 0.31)
@@ -243,7 +254,7 @@ fn anchor(f: &Frame, order: usize) -> Option<(Vec2, f32)> {
 
 #[derive(bevy::ecs::system::SystemParam)]
 pub(super) struct Context<'w, 's> {
-    session: Res<'w, Session>,
+    session: ResMut<'w, Session>,
     atmosphere: Res<'w, Atmosphere>,
     silhouette: Res<'w, Presence>,
     world: Res<'w, CollisionWorld>,
@@ -258,6 +269,8 @@ pub(super) struct Context<'w, 's> {
             &'static mut Visibility,
         ),
     >,
+    signals: MessageWriter<'w, hunt::Signal>,
+    hunt_qa: Option<Res<'w, hunt_qa::Check>>,
 }
 
 pub(super) fn update_campaign(
@@ -272,7 +285,7 @@ pub(super) fn update_campaign(
         mode.requested = !mode.requested;
         info!("Presença física solicitada: {}", mode.requested);
     }
-    let session = &ctx.session;
+    let session = &mut *ctx.session;
     let distinct = (session.attempt, session.perception_revision);
     if mode.attempt != distinct {
         mode.attempt = distinct;
@@ -332,6 +345,7 @@ pub(super) fn update_campaign(
         || ctx.atmosphere.episode.holding_silence()
         || session.false_exit.is_some()
         || crate::scene::station::lamp_refuge(session.memory().desk_light, feet);
+    let safe_post = crate::scene::station::near_rest_post(feet);
     let dt = time.delta_secs();
     let mode = mode.as_mut();
     let was = mode.brain.pos;
@@ -356,7 +370,7 @@ pub(super) fn update_campaign(
         view: View {
             eye: feet + Vec3::Y * player.eye_height,
             facing: direction,
-            protected,
+            protected: protected || mode.brain.hunt.active() && safe_post,
         },
         noises: &mode.noise,
         points: &STATION_ANCHORS,
@@ -367,7 +381,6 @@ pub(super) fn update_campaign(
         && brain.clock >= mode.retry
         && mode.requested
         && !protected
-        && brain.accepts(Intent::Observe)
         && director.allows(Cue::Presence, session.elapsed)
     {
         mode.retry = brain.clock + 0.7;
@@ -378,8 +391,74 @@ pub(super) fn update_campaign(
             mode.started += 1;
         }
     }
+    if !brain.hunt.active()
+        && mode.requested
+        && !protected
+        && !safe_post
+        && brain.state == State::Watch
+        && brain.visible
+        && brain.clock - brain.entered > 0.70
+        && let Some(memory) = brain.seen
+        && (7.0..15.0).contains(&brain.pos.distance(memory.at))
+        && session.elapsed >= 56.0
+        && hunt::motor_clear(
+            &frame,
+            brain.pos,
+            brain.pos,
+            brain.yaw,
+            angle(memory.at - brain.pos),
+        )
+        && let Some((prepare, bluff)) = director.hunt_window(
+            session.elapsed,
+            session.progress().phase(),
+            session.psychology.value(),
+            player.body.velocity.xz().length(),
+            escape_available(&frame, feet.xz(), brain.pos),
+        )
+    {
+        brain.change(State::Threaten, "início da ameaça", prepare, None);
+        brain.hunt = hunt::Hunt::start(
+            hunt::Tuning {
+                prepare,
+                ..default()
+            },
+            memory.at,
+            bluff,
+        );
+    }
     let in_presence = brain.state != State::Absent;
     brain.step(dt, &frame, Tuning::default(), true);
+    if std::mem::take(&mut brain.hunt.pending) {
+        let selected = if ctx.hunt_qa.is_some() {
+            hunt::Contact::Capture
+        } else {
+            director.hunt_contact(session.expedition.can_capture(), session.psychology.value())
+        };
+        brain.hunt.result = Some(hunt::apply(session, selected, true));
+    }
+    if let Some(cue) = brain.hunt.cue.take() {
+        let silent = matches!(
+            brain.hunt.result,
+            Some(hunt::Contact::Capture | hunt::Contact::Quiet)
+        );
+        if !silent
+            && !(cue == hunt::Cue::Contact
+                && brain.hunt.phase == hunt::Phase::Brake
+                && brain.hunt.result == Some(hunt::Contact::Intimidation))
+        {
+            ctx.signals.write(hunt::Signal {
+                cue,
+                at: point(brain.pos).with_y(0.45),
+            });
+        }
+        if cue == hunt::Cue::Acceleration && session.psychology.value() < 75.0 {
+            session.stimulate(
+                ainda_vivo_core::psychology::Stimulus::Gaze,
+                ainda_vivo_core::psychology::Origin::Presence,
+                0.30,
+            );
+        }
+    }
     if in_presence {
         mode.max_travel += was.distance(brain.pos).min(dt * 2.0);
     }
@@ -400,9 +479,36 @@ pub(super) fn update_campaign(
         if let Ok((mut current, mut t, mut show)) = ctx.poses.get_mut(id) {
             *current = pose;
             t.set_if_neq(transform);
-            show.set_if_neq(Visibility::Inherited);
+            show.set_if_neq(if brain.hunt.hidden() {
+                Visibility::Hidden
+            } else {
+                Visibility::Inherited
+            });
         }
     } else {
         mode.actor = catalog.spawn_observer(&mut commands, pose, transform, None);
     }
+}
+
+fn escape_available(frame: &Frame, player: Vec2, threat: Vec2) -> bool {
+    let half = Vec3::new(0.27, 0.91, 0.27);
+    let away = (player - threat).normalize_or_zero();
+    let side = Vec2::new(away.y, -away.x);
+    [
+        away,
+        side,
+        -side,
+        (away + side).normalize_or_zero(),
+        (away - side).normalize_or_zero(),
+    ]
+    .into_iter()
+    .filter(|d| {
+        d.length_squared() > 0.5
+            && frame
+                .nav
+                .clear_body(player, player + *d * 3.0, half, frame.door_closed)
+    })
+    .take(2)
+    .count()
+        == 2
 }

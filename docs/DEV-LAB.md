@@ -1,6 +1,6 @@
 # Dev Lab do AINDA VIVO
 
-A build experimental v0.0.12-dev.3 inclui o Dev Lab. No pacote Windows, extraia os arquivos e execute **ABRIR DEV LAB.cmd**. No menu ou durante a campanha, pressione **Ctrl+I** para entrar ou voltar. O botão de busca recebe a digitação até **Enter**, **Esc** ou um clique em outro controle.
+A build experimental v0.0.12-dev.4 inclui o Dev Lab. No pacote Windows, extraia os arquivos e execute **ABRIR DEV LAB.cmd**. No menu ou durante a campanha, pressione **Ctrl+I** para entrar ou voltar. O botão de busca recebe a digitação até **Enter**, **Esc** ou um clique em outro controle.
 
 | Atalho | Ação |
 |---|---|
@@ -47,6 +47,14 @@ Abra **IA → Cenário IA** para usar o corredor leste. **Automática** alterna 
 - Ajuste alcance, abertura da visão, sensibilidade, velocidade e tempos em **Parâmetros**. As leituras de memória têm coordenadas X/Z em metros, com o tempo restante em segundos.
 
 Para testar na Estação, use `ainda-vivo.exe --presence-physical` ou abra a build com **ABRIR DEV LAB.cmd** e pressione **F5** fora do Lab. A alternância espera o encontro ativo terminar. O terminal pode fixar a seed com `--seed 20261118`.
+
+## Caçada
+
+- **Caçada livre** inicia no lado oeste. Use **Tab** para capturar o mouse, **WASD** para correr para uma esquina e **Shift** para sprintar. **Ameaça** ensaia a ruptura com retorno em pé. **Interromper** pede freada e retirada.
+- **Teste de porta** usa o corredor leste. Alterne **Porta** durante a corrida para cortar a linha de visão. Os guias da aba **IA** também aparecem neste cenário.
+- Ajuste velocidade, aceleração, distância inicial, preparação, limite de tempo e alcance de contato. Os valores são aplicados à próxima caçada. O teste de porta restringe a distância inicial ao espaço do corredor.
+- Escolha **Contextual** ou um dos cinco resultados. **Simular contato selecionado** ensaia o desfecho diretamente. O painel mostra a distância, a velocidade, a rota e a razão de desistência. **Consequências psicológicas** alterna o acúmulo de instabilidade e a perda breve de firmeza dos controles no Lab. A sessão de ensaio tem seu próprio ponto de Despertar e progresso.
+- Na campanha experimental, **F5** alterna a representação como na dev.3. A perseguição pode ocorrer depois da leitura inicial da Bomba 02, após uma oportunidade do diretor. Os postos de pausa e a luminária de refúgio interrompem a perseguição.
 
 ## Uso no repositório
 
