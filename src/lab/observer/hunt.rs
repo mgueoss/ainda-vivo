@@ -416,16 +416,7 @@ impl Hunt {
             .or(seen)
             .map(|m| m.at)
             .unwrap_or(self.start_target);
-        let from_player = f.view.eye.xz() - b.pos;
-        if from_player.length_squared() <= self.tuning.reach * self.tuning.reach
-            && f.view.eye.y < 2.55
-            && forward(b.yaw).dot(from_player.normalize_or_zero()) >= 0.51
-            && f.nav.clear(
-                point(b.pos).with_y(0.72),
-                f.view.eye - Vec3::Y * 0.28,
-                f.door_closed,
-            )
-        {
+        if body_contact(f, b.pos, b.pos, b.yaw, self.tuning.reach) {
             self.stop(End::Contact);
             return;
         }
@@ -436,26 +427,15 @@ impl Hunt {
             self.old_door = f.door_closed;
         }
         if b.clock >= self.next_plan
-            && (b.path.is_empty()
+            && (b.path.get(b.waypoint).is_none()
                 || self
                     .planned
-                    .is_none_or(|p| p.distance_squared(target) > 0.68))
+                    .is_none_or(|p| p.distance_squared(target) > 0.20))
         {
             self.next_plan = b.clock + 0.34;
             self.planned = Some(target);
-            b.goal = Some(target);
             b.waypoint = 0;
-            let bearing = angle(target - b.pos);
-            if f.nav.sector(target) == f.nav.sector(b.pos)
-                && f.nav
-                    .clear_body(b.pos, target, half_at(bearing), f.door_closed)
-                && f.nav.clear_body(target, target, HUMAN, f.door_closed)
-            {
-                b.path.clear();
-                b.path.push(target);
-            } else {
-                f.nav.plan(b.pos, target, f.door_closed, true, &mut b.path);
-            }
+            b.goal = pursuit_route(f, b, target, self.tuning.reach);
         }
         if let Some(&ahead) = b.path.get(b.waypoint)
             && ahead.distance(b.pos) < 0.15
@@ -463,6 +443,10 @@ impl Hunt {
             b.waypoint += 1;
         }
         if b.path.get(b.waypoint).is_none() {
+            let yaw = turn(b.yaw, angle(target - b.pos), dt * 3.8);
+            if motor_clear(f, b.pos, b.pos, b.yaw, yaw) {
+                b.yaw = yaw;
+            }
             self.blocked += dt;
             self.speed = (self.speed - dt * 7.0).max(0.0);
             if self.blocked > 0.75 {
@@ -510,6 +494,10 @@ impl Hunt {
             self.distance += step.length();
             self.peak = self.peak.max(b.moving);
             self.blocked = 0.0;
+            if body_contact(f, next - step, next, yaw, self.tuning.reach) {
+                self.stop(End::Contact);
+                return;
+            }
         } else {
             if motor_clear(f, b.pos, b.pos, b.yaw, yaw) {
                 b.yaw = yaw;
@@ -530,6 +518,79 @@ impl Hunt {
             self.cue = Some(Cue::Vocal);
         }
     }
+}
+
+fn body_contact(f: &Frame, from: Vec2, to: Vec2, yaw: f32, reach: f32) -> bool {
+    let toward = f.view.eye.xz() - from;
+    let step = to - from;
+    let fraction = (toward.dot(step) / step.length_squared().max(1.0e-6)).clamp(0.0, 1.0);
+    let nearest = from + fraction * step;
+    let offset = f.view.eye.xz() - nearest;
+    f.view.eye.y < 2.55
+        && offset.length_squared() <= reach * reach
+        && (offset.length_squared() < 0.0025
+            || forward(yaw).dot(offset.normalize_or_zero()) >= 0.51)
+        && f.nav.clear(
+            point(nearest).with_y(0.72),
+            f.view.eye - Vec3::Y * 0.28,
+            f.door_closed,
+        )
+}
+
+fn pursuit_route(f: &Frame, b: &mut Brain, target: Vec2, reach: f32) -> Option<Vec2> {
+    b.path.clear();
+    let feasible = |at, aim| {
+        f.nav.clear_body(at, at, half_at(aim), f.door_closed)
+            && f.nav.clear_body(at, at, HUMAN, f.door_closed)
+    };
+    let bearing = angle(target - b.pos);
+    if feasible(target, bearing) {
+        if f.nav.sector(b.pos) == f.nav.sector(target)
+            && f.nav
+                .clear_body(b.pos, target, half_at(bearing), f.door_closed)
+            && f.nav.clear_body(b.pos, target, HUMAN, f.door_closed)
+        {
+            b.path.push(target);
+            return Some(target);
+        }
+        if f.nav.plan(b.pos, target, f.door_closed, true, &mut b.path) {
+            return Some(target);
+        }
+    }
+    // Um operador pode se espremer onde a postura quadrúpede não cabe.
+    // Termine em um ponto de aproximação com linha livre para a referência.
+    let toward = (b.pos - target).normalize_or_zero();
+    let candidates = [toward, Vec2::X, Vec2::NEG_X, Vec2::Y, Vec2::NEG_Y]
+        .into_iter()
+        .filter(|direction| direction.length_squared() > 0.01)
+        .map(|direction| target + direction * (reach * 0.94))
+        .filter(|&p| {
+            feasible(p, angle(target - p))
+                && f.nav.clear(
+                    point(p).with_y(0.8),
+                    point(target).with_y(1.1),
+                    f.door_closed,
+                )
+        });
+    if let Some(at) = candidates
+        .clone()
+        .filter(|&p| {
+            f.nav.sector(b.pos) == f.nav.sector(p)
+                && f.nav
+                    .clear_body(b.pos, p, half_at(angle(p - b.pos)), f.door_closed)
+                && f.nav.clear_body(b.pos, p, HUMAN, f.door_closed)
+        })
+        .min_by(|a, c| {
+            a.distance_squared(b.pos)
+                .total_cmp(&c.distance_squared(b.pos))
+        })
+    {
+        b.path.push(at);
+        return Some(at);
+    }
+    candidates
+        .take(2)
+        .find(|&p| f.nav.plan(b.pos, p, f.door_closed, true, &mut b.path))
 }
 
 pub fn half_at(yaw: f32) -> Vec3 {
@@ -611,6 +672,48 @@ mod tests {
             bluff,
         );
         b
+    }
+
+    #[test]
+    fn lateral_escape_along_equipment_keeps_a_reachable_chase() {
+        let nav = Nav::new(
+            vec![Zone {
+                min: Vec2::new(-8., -15.),
+                max: Vec2::new(8., 10.),
+            }],
+            Vec::new(),
+            vec![Aabb::from_center_size(
+                Vec3::new(2.70, 1.4, 3.0),
+                Vec3::new(0.55, 2.8, 6.0),
+            )],
+            None,
+        );
+        let y = 2.8;
+        let mut b = begin(Vec2::new(0., y), false);
+        let mut x = 0.0_f32;
+        let mut running = false;
+        let mut pending = 0;
+        for _ in 0..525 {
+            running |= b.hunt.phase == Phase::Run;
+            if running {
+                x = (x + 4.2 / 60.0).min(2.12);
+            }
+            let mut f = rehearsal(&nav, y, false);
+            f.view.eye.x = x;
+            b.step(1. / 60., &f, default(), true);
+            pending += u32::from(std::mem::take(&mut b.hunt.pending));
+            if b.hunt.end.is_some() {
+                break;
+            }
+        }
+        assert!(running && x > 2.0);
+        assert_eq!(
+            b.hunt.end,
+            Some(End::Contact),
+            "a rota executável termina a uma distância de contato do alvo lateral em {:?}",
+            b.pos
+        );
+        assert_eq!(pending, 1);
     }
 
     #[test]

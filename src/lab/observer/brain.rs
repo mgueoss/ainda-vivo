@@ -429,11 +429,23 @@ impl Brain {
             return;
         }
         if self.visible {
-            if self.state == State::Approach && (arrived || ended) {
-                if known.distance(self.pos) < config.approach + 2.0 && self.can_threaten(f) {
+            if self.state == State::Approach {
+                let distance = known.distance(self.pos);
+                if distance <= config.approach + 0.55 && self.can_threaten(f) {
                     self.change(State::Threaten, "ameaça sem avanço", 3.4, None);
+                } else if ended {
+                    self.change(State::Watch, "reavalia a aproximação", 2.8, None);
                 } else {
-                    self.retreat(f, "mantém distância", known);
+                    let goal = self.stance_target(known, config.approach);
+                    if self
+                        .goal
+                        .is_none_or(|old| old.distance_squared(goal) > 0.30)
+                    {
+                        self.goal = Some(goal);
+                        self.path.clear();
+                        self.waypoint = 0;
+                        self.retry_at = self.clock;
+                    }
                 }
             } else if self.state == State::Watch && (ended || self.noticed > 2.5) {
                 let roll = self.random();
@@ -462,7 +474,10 @@ impl Brain {
             }
             return;
         }
-        if matches!(self.state, State::Watch | State::Approach) && self.clock - self.entered > 0.7 {
+        if matches!(self.state, State::Watch | State::Approach)
+            && self.clock - self.entered > 0.7
+            && self.seen.is_none_or(|m| m.expires - self.clock < 8.45)
+        {
             if let Some(m) = self.seen
                 && m.at.distance(self.pos) > 4.0
                 && !self.recent.contains(&State::Follow)
@@ -534,17 +549,18 @@ impl Brain {
         }
         if self.hunt.active() {
             let mut hunt = std::mem::take(&mut self.hunt);
-            self.head = turn(self.head, 0.0, dt * 2.0);
+            self.aim_head(self.seen.or(self.heard).map(|m| m.at), dt);
             hunt.advance(self, dt, f);
             self.hunt = hunt;
             return;
         }
         let target = self.seen.or(self.heard).map(|m| m.at);
-        if matches!(self.state, State::Watch | State::Peek | State::Threaten)
-            && let Some(at) = target
+        if matches!(
+            self.state,
+            State::Watch | State::Peek | State::Threaten | State::Approach | State::Follow
+        ) && let Some(at) = target
         {
-            let yaw = turn(self.yaw, angle(at - self.pos), 0.49);
-            self.head = turn(self.head, yaw - self.yaw, dt * 1.4);
+            self.aim_head(Some(at), dt);
             if self.state != State::Watch && self.goal.is_none() {
                 let next = turn(self.yaw, angle(at - self.pos), dt * 1.2);
                 if f.nav.clear_body(self.pos, self.pos, HUMAN, f.door_closed) {
@@ -555,6 +571,13 @@ impl Brain {
             self.head = turn(self.head, 0.0, dt);
         }
         self.walk(dt, f, config, automatic);
+    }
+
+    fn aim_head(&mut self, target: Option<Vec2>, dt: f32) {
+        let local = target.map_or(0.0, |at| {
+            turn(self.yaw, angle(at - self.pos), 0.49) - self.yaw
+        });
+        self.head = turn(self.head, local, dt * 2.8);
     }
 
     fn walk(&mut self, dt: f32, f: &Frame, config: Tuning, automatic: bool) {
@@ -582,7 +605,11 @@ impl Brain {
         if self.path.is_empty() && self.clock >= self.retry_at {
             self.retry_at = self.clock + 0.8;
             self.waypoint = 0;
-            if !f.nav.route(self.pos, goal, f.door_closed, &mut self.path) {
+            if f.nav.sector(self.pos) == f.nav.sector(goal)
+                && f.nav.clear_body(self.pos, goal, HUMAN, f.door_closed)
+            {
+                self.path.push(goal);
+            } else if !f.nav.route(self.pos, goal, f.door_closed, &mut self.path) {
                 self.reason = "rota bloqueada";
                 self.stuck += 0.8;
                 if automatic && self.stuck >= 2.3 {
@@ -703,6 +730,38 @@ mod tests {
         assert!(
             path.windows(2)
                 .all(|adj| n.clear_body(adj[0], adj[1], HUMAN, false))
+        );
+    }
+
+    #[test]
+    fn measured_approach_updates_its_destination_when_target_sidesteps() {
+        let n = Nav::new(
+            vec![Zone {
+                min: Vec2::splat(-12.),
+                max: Vec2::splat(12.),
+            }],
+            Vec::new(),
+            Vec::new(),
+            None,
+        );
+        let tuning = Tuning::default();
+        let mut b = Brain::seeded(32);
+        b.spawn(Vec2::new(0., -8.), 0.);
+        let mut f = frame(&n, false, Vec2::new(0., 2.));
+        for _ in 0..24 {
+            b.step(1. / 60., &f, tuning, false);
+        }
+        let start = b.stance_target(b.seen.unwrap().at, tuning.approach);
+        b.change(State::Approach, "teste de desvio", 7., Some(start));
+        for tick in 0..120 {
+            f.view.eye.x = (tick as f32 / 24.).min(4.);
+            b.step(1. / 60., &f, tuning, true);
+        }
+        assert_eq!(b.state, State::Approach);
+        assert!(
+            b.goal.is_some_and(|at| at.x > start.x + 1.2),
+            "meta após o desvio: {:?}",
+            b.goal
         );
     }
 
