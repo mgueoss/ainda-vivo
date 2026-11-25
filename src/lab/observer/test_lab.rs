@@ -138,7 +138,7 @@ impl TestLab {
             })
         };
         format!(
-            "{} · {}\n{}\nDestino {} · rota {}\nÚlt. visão {}\nÚlt. ruído {}\nSetores {:?} · encontro {:?}\nAlvo {} · porta {}{}",
+            "{} · {}\n{}\nDestino {} · rota {}\nÚlt. visão {}\nÚlt. ruído {}\nSetores {:?} · encontro {:?}\nAlvo {} · porta {}{}\n\n{}",
             b.state.label(),
             if self.paused {
                 "pausada"
@@ -160,7 +160,8 @@ impl TestLab {
                 " · área ocupada"
             } else {
                 ""
-            }
+            },
+            b.diagnosis()
         )
     }
 }

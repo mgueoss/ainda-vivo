@@ -1,6 +1,11 @@
+pub(super) use super::cognition::Memory;
+use super::cognition::{Knowledge, MemoryBook, best_clue};
 use super::hunt::Hunt;
-use super::nav::{HUMAN, LOW, Nav, point};
+use super::nav::{HUMAN, LOW, Nav, RouteScratch, point};
+use super::tactics::{Decision, Goal, SearchPlan, SearchStep};
 use bevy::prelude::*;
+
+pub(super) const STEP: f32 = 1.0 / 60.0;
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
 pub enum State {
@@ -71,7 +76,7 @@ impl Default for Tuning {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
+#[derive(Clone, Copy, Debug, Default)]
 pub struct Noise {
     pub at: Vec2,
     pub power: f32,
@@ -90,12 +95,6 @@ pub struct Frame<'a> {
     pub view: View,
     pub noises: &'a [Noise],
     pub points: &'a [Vec2],
-}
-
-#[derive(Clone, Copy, Debug)]
-pub struct Memory {
-    pub at: Vec2,
-    pub expires: f32,
 }
 
 #[derive(Default)]
@@ -120,9 +119,15 @@ pub struct Brain {
     pub waypoint: usize,
     pub moving: f32,
     pub hunt: Hunt,
+    pub(super) memory: MemoryBook,
+    pub(super) route: RouteScratch,
+    pub(super) intended: Goal,
+    pub(super) scores: [f32; Goal::ALL.len()],
+    pub(super) plan: SearchPlan,
     rng: u32,
     sample: f32,
     exposure: f32,
+    glimpse: Option<Vec2>,
     pub(super) visible: bool,
     noticed: f32,
     limit: f32,
@@ -131,6 +136,12 @@ pub struct Brain {
     old_door: bool,
     failed_target: Option<Vec2>,
     rest_at: Vec2,
+    review_at: f32,
+    used_clue: Option<f32>,
+    remainder: f32,
+    pending_noise: [Noise; 6],
+    noise_count: usize,
+    previous_eye: Option<Vec3>,
 }
 
 pub fn forward(yaw: f32) -> Vec2 {
@@ -182,6 +193,7 @@ impl Brain {
         self.born = self.clock;
         self.noticed = 0.0;
         self.exposure = 0.0;
+        self.glimpse = None;
         self.visible = false;
         self.ray = None;
         self.failed_target = None;
@@ -206,6 +218,8 @@ impl Brain {
         self.waypoint = 0;
         self.stuck = 0.0;
         self.retry_at = self.clock;
+        self.plan = SearchPlan::default();
+        self.memory.record(self.clock, reason, self.hit_sector);
     }
 
     fn sample(&mut self, f: &Frame, config: Tuning, elapsed: f32) {
@@ -214,22 +228,60 @@ impl Brain {
         let delta = target - eye;
         let heading = forward(self.yaw + self.head);
         let cone = (config.fov.to_radians() * 0.5).cos();
-        let frontal = heading.dot(delta.xz().normalize_or_zero()) >= cone;
+        let edge = (config.fov.to_radians() * 0.5 + 0.45).min(1.61).cos();
+        let dot = heading.dot(delta.xz().normalize_or_zero());
+        let frontal = dot >= cone || delta.length_squared() < 1.2 * 1.2;
+        let peripheral = dot >= edge && delta.length_squared() <= (config.range * 0.68).powi(2);
         let in_range = delta.length_squared() <= config.range * config.range && delta.y.abs() < 4.0;
-        let clear = frontal && in_range && f.nav.clear(eye, target, f.door_closed);
-        self.ray = (frontal || in_range).then_some((eye, target, clear));
-        self.exposure = if clear {
-            (self.exposure + elapsed).min(0.5)
+        let clear = (frontal || peripheral) && in_range && f.nav.clear(eye, target, f.door_closed);
+        let moving = self
+            .glimpse
+            .is_some_and(|old| target.xz().distance_squared(old) > (elapsed * 0.8).powi(2));
+        self.glimpse = clear.then_some(target.xz());
+        self.ray = in_range.then_some((eye, target, clear));
+        let track = clear && (frontal || moving || self.visible || delta.length_squared() < 6.25);
+        let weight = if frontal { 1.0 } else { 0.69 };
+        self.exposure = if track {
+            (self.exposure + elapsed * weight).min(0.5)
         } else {
-            0.0
+            (self.exposure - elapsed * 1.75).max(0.0)
         };
-        self.visible = clear && self.exposure >= 0.25;
+        let was = self.visible;
+        self.visible = track && self.exposure >= if was { 0.13 } else { 0.25 };
         if self.visible {
-            self.seen = Some(Memory {
+            let sector = f.nav.sector(target.xz());
+            let measured = self
+                .seen
+                .filter(|p| (0.025..=0.42).contains(&p.age(self.clock)))
+                .map(|p| {
+                    let v = ((target.xz() - p.at) / p.age(self.clock)).clamp_length_max(6.4);
+                    if v.length_squared() < 0.04 || v.dot(p.velocity) < 0.0 {
+                        v
+                    } else {
+                        p.velocity.lerp(v, 0.73)
+                    }
+                })
+                .unwrap_or(Vec2::ZERO);
+            let current = Memory {
                 at: target.xz(),
+                when: self.clock,
                 expires: self.clock + 9.0,
-            });
-            self.hit_sector = f.nav.sector(target.xz());
+                certainty: if frontal { 0.94 } else { 0.57 },
+                error: if frontal { 0.22 } else { 0.74 },
+                velocity: measured,
+                sector,
+            };
+            self.memory
+                .observe(self.seen, current, f.nav, f.door_closed);
+            self.seen = Some(current);
+            self.hit_sector = sector;
+            if !was {
+                self.memory.sightings += 1;
+                self.memory
+                    .record(self.clock, "confirmou o operador pela visão", sector);
+            }
+        } else if was {
+            self.memory.missed(self.clock, self.hit_sector);
         }
         let in_player_view = player_sees(f, eye);
         self.noticed = if in_player_view {
@@ -260,18 +312,110 @@ impl Brain {
                 } else {
                     noise.at
                 };
+                let confidence = (0.26 + power * 0.35).clamp(0.27, 0.79);
                 if self.heard.is_some_and(|old| {
-                    old.at.distance_squared(at) < 1.0 && old.expires - self.clock > 5.0
+                    old.at.distance_squared(at) < 1.0
+                        && old.age(self.clock) < 0.32
+                        && old.certainty > confidence - 0.09
                 }) {
                     continue;
                 }
                 loudest = power;
                 self.heard = Some(Memory {
                     at,
+                    when: self.clock,
                     expires: self.clock + 8.0,
+                    certainty: confidence,
+                    error: 0.9 + distance * 0.06 + if unobstructed { 0.0 } else { 1.4 },
+                    velocity: Vec2::ZERO,
+                    sector: f.nav.sector(at),
                 });
             }
         }
+        if loudest > 0.21
+            && let Some(noise) = self.heard
+        {
+            self.memory.noises += 1;
+            self.memory
+                .record(self.clock, "ouviu um ruído físico", noise.sector);
+        }
+    }
+
+    pub(super) fn knowledge(&self) -> (Knowledge, Option<Memory>) {
+        best_clue(self.clock, self.visible, self.seen, self.heard)
+    }
+
+    pub(super) fn diagnosis(&self) -> String {
+        use std::fmt::Write;
+
+        let (knowledge, clue) = self.knowledge();
+        let (objective, plan) = if self.hunt.active() {
+            (self.hunt.strategy.label(), &self.hunt.search)
+        } else {
+            (self.intended.label(), &self.plan)
+        };
+        let mut out = format!(
+            "{objective} · {}\n{} · {}",
+            self.state.label(),
+            knowledge.label(),
+            self.reason
+        );
+        if let Some(m) = clue {
+            let _ = write!(
+                out,
+                "\nIndício {:.1}, {:.1} · {:.0}% · raio {:.1} m · há {:.1} s",
+                m.at.x,
+                m.at.y,
+                100.0 * m.trust(self.clock),
+                m.radius(self.clock),
+                m.age(self.clock)
+            );
+        }
+        for (i, step) in plan.steps.iter().flatten().enumerate().skip(plan.cursor) {
+            let mark = if i == plan.cursor { "›" } else { "·" };
+            let _ = write!(out, "\n{mark} {}", step.describe());
+        }
+        let _ = write!(out, "\n\nUTILIDADES");
+        for goal in Goal::ALL {
+            let _ = write!(out, "\n{} {:.2}", goal.label(), self.scores[goal as usize]);
+        }
+        let _ = write!(out, "\n\nMEMÓRIA");
+        for habit in self
+            .memory
+            .routes
+            .iter()
+            .flatten()
+            .filter(|h| self.clock - h.when < 88.0)
+        {
+            let [a, b] = habit.link;
+            let _ = write!(
+                out,
+                "\n{a} → {b} · {} vistos · {} falhas · peso {:.2}",
+                habit.crossings,
+                habit.failures,
+                self.memory.rate(a, b, self.clock)
+            );
+        }
+        let running = self
+            .memory
+            .running_tendency()
+            .map_or("—".into(), |v| format!("{:.0}%", v * 100.0));
+        let _ = write!(
+            out,
+            "\nCorrida observada {running}\nPlanos {} · bloqueios {} · retomadas {} · manobras {}\nGrade {} nós / {} limites · {} KiB de busca",
+            self.memory.replans,
+            self.memory.blocked,
+            self.memory.reacquired,
+            self.memory.recovered,
+            self.route.expanded,
+            self.route.budget_hits,
+            self.route.bytes() / 1024
+        );
+        let _ = write!(out, "\n\nEPISÓDIOS");
+        for e in self.memory.episodes.iter().flatten() {
+            let _ = write!(out, "\n{:.1}s · {:?} · {}", e.when, e.sector, e.reason);
+        }
+        out
     }
 
     fn pocket(&self, f: &Frame, avoid: Vec2) -> Option<Vec2> {
@@ -376,16 +520,17 @@ impl Brain {
             })
             .unwrap_or(self.rest_at);
         self.change(State::Retreat, why, 14.0, Some(target));
+        self.intended = Goal::Withdraw;
     }
 
     fn decide(&mut self, f: &Frame, config: Tuning) {
         let ended = self.clock >= self.limit;
-        let known = self.seen.or(self.heard).map_or(self.rest_at, |m| m.at);
+        let (knowledge, clue) = self.knowledge();
+        let known = clue.map_or(self.rest_at, |m| m.at);
         let arrived = self.goal.is_none_or(|p| p.distance(self.pos) < 0.23);
         if self.state == State::Retreat {
             if (ended || arrived) && !player_sees(f, self.eye()) {
-                let delay = 24.0 + 25.0 * self.random();
-                self.next_manifest = self.clock + delay;
+                self.next_manifest = self.clock + 24.0 + 25.0 * self.random();
                 self.change(State::Absent, "recuou fora de vista", 0.0, None);
             } else if (ended || arrived) && self.clock >= self.retry_at {
                 self.retreat(f, "busca outro abrigo", known);
@@ -394,12 +539,21 @@ impl Brain {
             return;
         }
         if self.state == State::Threaten {
-            if ended {
+            if ended && self.intended == Goal::Feint && self.visible && self.noticed < 3.0 {
+                self.change(State::Watch, "permanece de vigia após a ameaça", 3.6, None);
+                self.intended = Goal::Observe;
+            } else if ended {
                 self.retreat(f, "ameaça encerrada", known);
             }
             return;
         }
-        if self.clock - self.born > 33.0 || self.seen.is_some_and(|m| m.at.distance(self.pos) < 2.8)
+        let linger = if matches!(self.state, State::Watch | State::Peek) && self.noticed < 1.4 {
+            85.0
+        } else {
+            49.0
+        };
+        if self.clock - self.born > linger
+            || self.visible && self.seen.is_some_and(|m| m.at.distance(self.pos) < 2.65)
         {
             self.retreat(f, "encerra a exposição", known);
             return;
@@ -418,102 +572,196 @@ impl Brain {
                         config.investigation,
                         Some(goal),
                     );
+                    self.intended = Goal::Investigate;
                 }
             }
             return;
         }
         if self.state == State::Peek {
-            if self.noticed > 0.40 || ended {
+            if ended || self.goal.is_none() && self.noticed > 1.55 {
                 self.retreat(f, "encerra a espiada", known);
             }
             return;
         }
-        if self.visible {
-            if self.state == State::Approach {
-                let distance = known.distance(self.pos);
-                if distance <= config.approach + 0.55 && self.can_threaten(f) {
-                    self.change(State::Threaten, "ameaça sem avanço", 3.4, None);
-                } else if ended {
-                    self.change(State::Watch, "reavalia a aproximação", 2.8, None);
-                } else {
-                    let goal = self.stance_target(known, config.approach);
-                    if self
-                        .goal
-                        .is_none_or(|old| old.distance_squared(goal) > 0.30)
-                    {
-                        self.goal = Some(goal);
-                        self.path.clear();
-                        self.waypoint = 0;
-                        self.retry_at = self.clock;
-                    }
-                }
-            } else if self.state == State::Watch && (ended || self.noticed > 2.5) {
-                let roll = self.random();
-                if let Some(target) = self
-                    .peek(f, known)
-                    .filter(|_| roll < 0.28 && !self.recent.contains(&State::Peek))
+
+        let sight = knowledge == Knowledge::Confirmed;
+        let watching = self.state == State::Watch;
+        if sight && self.state == State::Approach {
+            if known.distance(self.pos) <= config.approach + 0.55 && self.can_threaten(f) {
+                self.change(State::Threaten, "ameaça sem avanço", 3.4, None);
+                self.intended = Goal::Feint;
+            } else if ended {
+                self.change(State::Watch, "reavalia a aproximação", 2.8, None);
+                self.intended = Goal::Observe;
+            } else {
+                let goal = self.stance_target(known, config.approach);
+                if self
+                    .goal
+                    .is_none_or(|old| old.distance_squared(goal) > 0.30)
                 {
-                    self.change(
-                        State::Peek,
-                        "achou uma borda com cobertura",
-                        5.5,
-                        Some(target),
-                    );
-                } else if roll > 0.66
-                    && known.distance(self.pos) > config.approach + 1.3
-                    && !self.recent.contains(&State::Approach)
-                {
-                    let target = self.stance_target(known, config.approach);
-                    self.change(State::Approach, "aproximação medida", 7.0, Some(target));
-                } else {
-                    self.retreat(f, "observação encerrada", known);
+                    self.set_goal(Some(goal));
                 }
-            } else if !matches!(self.state, State::Watch | State::Approach) {
-                let duration = config.watching * (0.75 + self.random() * 0.40);
-                self.change(State::Watch, "contato visual confirmado", duration, None);
             }
             return;
         }
-        if matches!(self.state, State::Watch | State::Approach)
-            && self.clock - self.entered > 0.7
-            && self.seen.is_none_or(|m| m.expires - self.clock < 8.45)
+        if watching && sight && !ended && self.noticed < 3.1
+            || !sight
+                && matches!(self.state, State::Watch | State::Approach)
+                && self
+                    .seen
+                    .is_some_and(|visual| visual.age(self.clock) < 0.60)
         {
-            if let Some(m) = self.seen
-                && m.at.distance(self.pos) > 4.0
-                && !self.recent.contains(&State::Follow)
-                && self.random() < 0.72
-            {
-                self.change(
-                    State::Follow,
-                    "perdeu a visão, segue a última referência",
-                    7.0,
-                    Some(self.stance_target(m.at, 3.6)),
-                );
-            } else {
-                self.retreat(f, "perdeu a visão", known);
+            return;
+        }
+        if !sight && self.plan.clue.is_some() && !ended {
+            self.investigate(f, clue);
+            return;
+        }
+        if !sight && !ended && !arrived && knowledge == Knowledge::Unknown {
+            return;
+        }
+        let new_evidence = sight && !watching
+            || knowledge == Knowledge::Heard
+                && matches!(self.state, State::Rest | State::Explore)
+                && clue.is_some_and(|m| m.age(self.clock) < 0.22);
+        if self.clock < self.review_at && !new_evidence {
+            return;
+        }
+        self.review_at = self.clock + 0.31;
+        self.choose(f, config, knowledge, clue);
+    }
+
+    fn choose(&mut self, f: &Frame, config: Tuning, knowledge: Knowledge, clue: Option<Memory>) {
+        let known = clue.map_or(self.rest_at, |m| m.at);
+        let sight = knowledge == Knowledge::Confirmed;
+        let watching = self.state == State::Watch;
+        let cover = if sight && watching && !self.recent.contains(&State::Peek) {
+            self.peek(f, known)
+        } else {
+            None
+        };
+        let gap = self.pos.distance(known) - config.approach;
+        let decision = Decision {
+            knowledge,
+            confidence: clue.map_or(0.0, |m| m.trust(self.clock)),
+            exposure: self.noticed,
+            gap,
+            time: self.clock - self.born,
+            watching,
+            cover: cover.is_some(),
+            viable_feint: sight && (0.1..4.3).contains(&gap) && self.can_threaten(f),
+            motion: self.memory.running_tendency().unwrap_or(0.45),
+        };
+        let mut scores = decision.scores();
+        if !sight && clue.is_some_and(|m| self.used_clue.is_some_and(|used| m.when <= used + 0.2)) {
+            scores[Goal::Search as usize] = 0.0;
+            scores[Goal::Investigate as usize] = 0.0;
+        }
+        if self.recent.contains(&State::Approach) {
+            scores[Goal::Approach as usize] *= 0.76;
+        }
+        if self.recent.contains(&State::Threaten) {
+            scores[Goal::Feint as usize] *= 0.56;
+        }
+        if !sight && self.noticed < 1.0 && !self.recent.contains(&State::Explore) {
+            scores[Goal::Withdraw as usize] *= 0.74;
+        }
+        for goal in Goal::ALL {
+            if scores[goal as usize] > 0.0 {
+                scores[goal as usize] +=
+                    self.random() * 0.032 + if self.intended == goal { 0.035 } else { 0.0 };
             }
-        } else if let Some(noise) = self.heard
-            && matches!(self.state, State::Rest | State::Explore | State::Follow)
-            && !self.recent.contains(&State::Investigate)
+        }
+        let goal = Goal::ALL
+            .into_iter()
+            .max_by(|a, b| scores[*a as usize].total_cmp(&scores[*b as usize]))
+            .unwrap();
+        self.scores = scores;
+        self.intended = goal;
+
+        match goal {
+            Goal::Observe => {
+                let duration = config.watching * (0.83 + self.random() * 0.60);
+                self.change(
+                    State::Watch,
+                    "observa a partir de contato visual",
+                    duration,
+                    None,
+                );
+            }
+            Goal::Approach => self.change(
+                State::Approach,
+                "aproximação medida",
+                8.2,
+                Some(self.stance_target(known, config.approach)),
+            ),
+            Goal::Cover => self.change(State::Peek, "borda ao alcance com cobertura", 6.6, cover),
+            Goal::Feint => self.change(State::Threaten, "ameaça de ruptura", 3.4, None),
+            Goal::Investigate | Goal::Search => {
+                if let Some(clue) = clue {
+                    let (state, reason) = if goal == Goal::Investigate {
+                        (State::Investigate, "ruído localizado aproximadamente")
+                    } else {
+                        (State::Follow, "procura após perder o rastro")
+                    };
+                    self.change(state, reason, config.investigation, Some(clue.at));
+                    self.used_clue = Some(clue.when);
+                    self.plan =
+                        SearchPlan::build(f.nav, &self.memory, clue, self.clock, f.door_closed);
+                    self.investigate(f, None);
+                }
+            }
+            Goal::Wait if self.clock < self.limit && self.state == State::Rest => {}
+            Goal::Wait => {
+                if let Some(target) = self.pocket(f, known) {
+                    self.change(
+                        State::Explore,
+                        "varre um setor pouco observado",
+                        14.0,
+                        Some(target),
+                    );
+                } else {
+                    self.change(State::Rest, "escuta sem uma rota útil", 2.1, None);
+                }
+            }
+            Goal::Withdraw => self.retreat(f, "terminou de observar a área", known),
+        }
+    }
+
+    fn set_goal(&mut self, goal: Option<Vec2>) {
+        if self.goal != goal {
+            self.goal = goal;
+            self.path.clear();
+            self.waypoint = 0;
+            self.retry_at = self.clock;
+        }
+    }
+
+    fn investigate(&mut self, f: &Frame, latest: Option<Memory>) {
+        if let Some(clue) = latest
+            && self.plan.can_revise(clue, self.clock)
         {
-            self.change(
-                State::Investigate,
-                "ruído localizado aproximadamente",
-                config.investigation,
-                Some(self.stance_target(noise.at, 0.9)),
-            );
-        } else if ended || (arrived && self.goal.is_some()) {
-            if matches!(
-                self.state,
-                State::Follow | State::Investigate | State::Explore
-            ) {
-                self.change(State::Rest, "escuta no local alcançado", 2.2, None);
-            } else if self.recent.contains(&State::Explore) {
-                self.retreat(f, "fim da ronda", known);
-            } else if let Some(target) = self.pocket(f, known) {
-                self.change(State::Explore, "ronda exploratória", 13.0, Some(target));
-            } else {
-                self.retreat(f, "sem ponto acessível", known);
+            let revisions = self.plan.revisions + 1;
+            self.plan = SearchPlan::build(f.nav, &self.memory, clue, self.clock, f.door_closed);
+            self.plan.revisions = revisions;
+            self.used_clue = Some(clue.when);
+            self.memory
+                .record(self.clock, "ajustou a busca a um novo indício", clue.sector);
+        }
+        match self.plan.current() {
+            Some(SearchStep::Go { at, .. }) if self.pos.distance_squared(at) > 0.72 * 0.72 => {
+                self.set_goal(Some(at));
+            }
+            Some(SearchStep::Listen(duration)) if self.clock - self.plan.since < duration => {
+                self.set_goal(None);
+            }
+            Some(_) => {
+                self.plan.next(self.clock);
+                self.set_goal(None);
+            }
+            None => {
+                self.change(State::Rest, "examinou a área sem confirmação", 2.8, None);
+                self.intended = Goal::Wait;
             }
         }
     }
@@ -529,6 +777,52 @@ impl Brain {
     }
 
     pub fn step(&mut self, dt: f32, f: &Frame, config: Tuning, automatic: bool) {
+        let dt = dt.clamp(0.0, 0.25);
+        let old_eye = self
+            .previous_eye
+            .replace(f.view.eye)
+            .filter(|old| old.distance_squared(f.view.eye) < 1.7 * 1.7)
+            .unwrap_or(f.view.eye);
+        if self.state == State::Absent {
+            self.clock += dt;
+            self.moving = 0.0;
+            self.seen = self.seen.filter(|m| m.expires > self.clock);
+            self.heard = self.heard.filter(|m| m.expires > self.clock);
+            self.remainder = 0.0;
+            self.noise_count = 0;
+            return;
+        }
+        for &noise in f.noises {
+            if self.noise_count < self.pending_noise.len() {
+                self.pending_noise[self.noise_count] = noise;
+                self.noise_count += 1;
+            }
+        }
+        self.remainder += dt;
+        let ticks = ((self.remainder + 1.0e-6) / STEP) as usize;
+        if ticks == 0 {
+            return;
+        }
+        self.remainder = (self.remainder - ticks as f32 * STEP).max(0.0);
+        let noises = self.pending_noise;
+        let count = std::mem::take(&mut self.noise_count);
+        for tick in 0..ticks {
+            let frame = Frame {
+                nav: f.nav,
+                door_closed: f.door_closed,
+                noises: if tick == 0 { &noises[..count] } else { &[] },
+                points: f.points,
+                view: View {
+                    eye: old_eye.lerp(f.view.eye, (tick + 1) as f32 / ticks as f32),
+                    ..f.view
+                },
+            };
+            self.tick(&frame, config, automatic);
+        }
+    }
+
+    fn tick(&mut self, f: &Frame, config: Tuning, automatic: bool) {
+        let dt = STEP;
         self.clock += dt;
         self.moving = 0.0;
         self.seen = self.seen.filter(|m| m.expires > self.clock);
@@ -540,7 +834,7 @@ impl Brain {
             self.listen(f, config);
         }
         self.sample += dt;
-        if self.sample >= 0.14 {
+        if self.sample >= if self.hunt.active() { 0.095 } else { 0.14 } {
             let elapsed = std::mem::take(&mut self.sample);
             self.sample(f, config, elapsed);
             if automatic && !self.hunt.active() {
@@ -557,7 +851,12 @@ impl Brain {
         let target = self.seen.or(self.heard).map(|m| m.at);
         if matches!(
             self.state,
-            State::Watch | State::Peek | State::Threaten | State::Approach | State::Follow
+            State::Watch
+                | State::Peek
+                | State::Threaten
+                | State::Approach
+                | State::Follow
+                | State::Investigate
         ) && let Some(at) = target
         {
             self.aim_head(Some(at), dt);
@@ -569,6 +868,9 @@ impl Brain {
             }
         } else {
             self.head = turn(self.head, 0.0, dt);
+        }
+        if matches!(self.plan.current(), Some(SearchStep::Listen(_))) {
+            self.head = ((self.clock - self.plan.since) * 4.1).sin() * 0.45;
         }
         self.walk(dt, f, config, automatic);
     }
@@ -605,17 +907,23 @@ impl Brain {
         if self.path.is_empty() && self.clock >= self.retry_at {
             self.retry_at = self.clock + 0.8;
             self.waypoint = 0;
+            self.memory.replans += 1;
             if f.nav.sector(self.pos) == f.nav.sector(goal)
                 && f.nav.clear_body(self.pos, goal, HUMAN, f.door_closed)
             {
                 self.path.push(goal);
-            } else if !f.nav.route(self.pos, goal, f.door_closed, &mut self.path) {
+            } else if !f.nav.plan(
+                self.pos,
+                goal,
+                f.door_closed,
+                false,
+                &mut self.path,
+                &mut self.route,
+            ) {
                 self.reason = "rota bloqueada";
                 self.stuck += 0.8;
                 if automatic && self.stuck >= 2.3 {
-                    self.failed_target = Some(goal);
-                    let from = self.seen.map_or(self.pos, |m| m.at);
-                    self.retreat(f, "desistiu da rota bloqueada", from);
+                    self.walk_blocked(f, goal, "desistiu da rota bloqueada");
                 }
             }
         }
@@ -645,16 +953,33 @@ impl Brain {
         if f.nav.clear_body(self.pos, next, HUMAN, f.door_closed) {
             self.moving = self.pos.distance(next) / dt.max(0.001);
             self.pos = next;
+            if self.stuck > 0.0 {
+                self.memory.recovered += 1;
+            }
             self.stuck = 0.0;
         } else {
             self.path.clear();
             self.stuck += 0.8;
             self.reason = "replanejando após bloqueio";
             if automatic && self.stuck >= 2.3 {
-                self.failed_target = Some(goal);
-                let from = self.seen.map_or(self.pos, |m| m.at);
-                self.retreat(f, "desistiu de manobrar", from);
+                self.walk_blocked(f, goal, "desistiu de manobrar");
             }
+        }
+    }
+
+    fn walk_blocked(&mut self, f: &Frame, goal: Vec2, reason: &'static str) {
+        self.memory.blocked += 1;
+        self.failed_target = Some(goal);
+        if let Some(SearchStep::Go { link, .. }) = self.plan.current() {
+            if let Some(link) = link {
+                self.memory.failed(link, self.clock);
+            }
+            self.plan.next(self.clock);
+            self.set_goal(None);
+            self.stuck = 0.0;
+        } else {
+            let from = self.knowledge().1.map_or(self.pos, |m| m.at);
+            self.retreat(f, reason, from);
         }
     }
 }
@@ -791,6 +1116,43 @@ mod tests {
             b.step(0.15, &f, settings, false);
         }
         assert!(b.seen.is_none());
+    }
+
+    #[test]
+    fn peripheral_motion_creates_an_uncertain_clue_and_occlusion_never_refreshes_it() {
+        let nav = Nav::new(
+            vec![Zone {
+                min: Vec2::splat(-15.),
+                max: Vec2::splat(15.),
+            }],
+            Vec::new(),
+            Vec::new(),
+            Some(box_at(3., 1.5, 0.3, 6.0)),
+        );
+        let config = Tuning::default();
+        let mut b = Brain::seeded(42);
+        b.spawn(Vec2::ZERO, 0.);
+        let mut f = frame(&nav, false, Vec2::new(7., 3.));
+        for _ in 0..5 {
+            b.step(0.15, &f, config, false);
+        }
+        assert!(b.seen.is_none());
+        for tick in 1..=5 {
+            f.view.eye.x = 7. + tick as f32 * 0.18;
+            b.step(0.15, &f, config, false);
+        }
+        let clue = b.seen.expect("movimento sustentado na periferia");
+        assert!(clue.certainty < 0.7 && clue.velocity.x > 0.0);
+        f.door_closed = true;
+        f.view.eye.x = 10.0;
+        for _ in 0..8 {
+            b.step(0.15, &f, config, false);
+        }
+        assert_ne!(b.knowledge().0, Knowledge::Confirmed);
+        let still = b.seen.unwrap();
+        assert_eq!(still.at, clue.at);
+        assert_eq!(still.when, clue.when);
+        assert!(still.trust(b.clock) < clue.certainty && still.radius(b.clock) > clue.error);
     }
 
     #[test]

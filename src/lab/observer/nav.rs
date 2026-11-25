@@ -7,6 +7,24 @@ pub const HUMAN: Vec3 = Vec3::new(0.50, 1.12, 0.50);
 pub const LOW: Vec3 = Vec3::new(0.68, 0.65, 1.24);
 const LOW_GRID: Vec3 = Vec3::new(LOW.x, LOW.y, LOW.x);
 const EDGES: [IVec2; 4] = [IVec2::X, IVec2::NEG_X, IVec2::Y, IVec2::NEG_Y];
+const NODE_BUDGET: usize = 3_200;
+
+#[derive(Default)]
+pub(super) struct RouteScratch {
+    score: Vec<u16>,
+    parent: Vec<usize>,
+    queue: BinaryHeap<Reverse<(u16, u16, usize)>>,
+    pub(super) expanded: usize,
+    pub(super) budget_hits: u32,
+}
+
+impl RouteScratch {
+    pub(super) fn bytes(&self) -> usize {
+        self.score.capacity() * size_of::<u16>()
+            + self.parent.capacity() * size_of::<usize>()
+            + self.queue.capacity() * size_of::<Reverse<(u16, u16, usize)>>()
+    }
+}
 
 #[derive(Clone, Copy)]
 pub struct Zone {
@@ -137,6 +155,29 @@ impl Nav {
         self.zones.iter().position(|z| z.contains(p))
     }
 
+    pub(super) fn exits(
+        &self,
+        sector: usize,
+        closed: bool,
+    ) -> impl Iterator<Item = (usize, Vec2)> + '_ {
+        self.portals.iter().filter_map(move |&portal| {
+            let [a, b] = portal.rooms;
+            if self.portal_gate(portal, closed) {
+                return None;
+            }
+            let other = if a == sector {
+                b
+            } else if b == sector {
+                a
+            } else {
+                return None;
+            };
+            let zone = self.zones[other];
+            let inward = ((zone.min + zone.max) * 0.5 - portal.at).normalize_or_zero();
+            Some((other, portal.at + inward * 1.15))
+        })
+    }
+
     pub fn blockers(&self, closed: bool) -> impl Iterator<Item = &Aabb> {
         self.solids
             .iter()
@@ -229,16 +270,17 @@ impl Nav {
     }
 
     pub fn route(&self, from: Vec2, to: Vec2, closed: bool, path: &mut Vec<Vec2>) -> bool {
-        self.plan(from, to, closed, false, path)
+        self.plan(from, to, closed, false, path, &mut RouteScratch::default())
     }
 
-    pub fn plan(
+    pub(super) fn plan(
         &self,
         from: Vec2,
         to: Vec2,
         closed: bool,
         low: bool,
         path: &mut Vec<Vec2>,
+        scratch: &mut RouteScratch,
     ) -> bool {
         path.clear();
         let profile = usize::from(low);
@@ -250,9 +292,18 @@ impl Nav {
         ) else {
             return false;
         };
-        let mut score = vec![u16::MAX; edges.len()];
-        let mut parent = vec![start; edges.len()];
-        let mut queue = BinaryHeap::new();
+        let RouteScratch {
+            score,
+            parent,
+            queue,
+            expanded,
+            budget_hits,
+        } = scratch;
+        score.resize(edges.len(), u16::MAX);
+        score.fill(u16::MAX);
+        parent.resize(edges.len(), start);
+        queue.clear();
+        let mut remaining = NODE_BUDGET;
         score[start] = 0;
         queue.push(Reverse((0, 0, start)));
         let goal = self.cell(end);
@@ -260,6 +311,12 @@ impl Nav {
             if cost != score[i] {
                 continue;
             }
+            if remaining == 0 {
+                *budget_hits += 1;
+                break;
+            }
+            remaining -= 1;
+            *expanded = expanded.saturating_add(1);
             if i == end {
                 path.push(to);
                 let mut current = i;

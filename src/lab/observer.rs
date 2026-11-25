@@ -1,9 +1,11 @@
 mod brain;
+mod cognition;
 pub(crate) mod hunt;
 mod hunt_lab;
 pub(super) mod hunt_qa;
 mod nav;
 pub(super) mod qa;
+mod tactics;
 mod test_lab;
 
 use super::{library::Catalog, motion};

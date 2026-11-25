@@ -2,6 +2,10 @@ use super::{
     brain::{Brain, Frame, State, angle, forward, turn},
     nav::{HUMAN, LOW, point},
 };
+use super::{
+    cognition::Knowledge,
+    tactics::{self, SearchPlan, SearchStep},
+};
 use crate::app::Session;
 use ainda_vivo_core::psychology::{Origin, Stimulus};
 use bevy::prelude::*;
@@ -162,6 +166,28 @@ pub enum Phase {
     Flinch,
 }
 
+#[derive(Clone, Copy, Debug, Default, PartialEq, Eq)]
+pub(super) enum Strategy {
+    #[default]
+    Direct,
+    Intercept,
+    LocalSearch,
+    SectorSearch,
+    Withdraw,
+}
+
+impl Strategy {
+    pub(super) fn label(self) -> &'static str {
+        match self {
+            Self::Direct => "Corrida direta",
+            Self::Intercept => "Interceptação",
+            Self::LocalSearch => "Busca localizada",
+            Self::SectorSearch => "Busca por setor",
+            Self::Withdraw => "Retirada",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Cue {
     Walk,
@@ -211,6 +237,12 @@ pub struct Hunt {
     folding: f32,
     brake_speed: f32,
     progress: f32,
+    effort: f32,
+    pub(super) strategy: Strategy,
+    pub(super) search: SearchPlan,
+    intercept: Option<([usize; 2], Vec2)>,
+    next_tactic: f32,
+    no_intercept_until: f32,
 }
 
 impl Hunt {
@@ -279,6 +311,7 @@ impl Hunt {
             return;
         }
         self.end = Some(why);
+        self.strategy = Strategy::Withdraw;
         self.folding = if self.phase == Phase::Run {
             1.0
         } else {
@@ -347,6 +380,9 @@ impl Hunt {
                 self.phase = Phase::Idle;
                 self.finished = true;
                 self.speed = 0.0;
+                if let Some(end) = self.end {
+                    b.memory.record(b.clock, end.label(), b.hit_sector);
+                }
                 b.path.clear();
                 if self.result == Some(Contact::Illusion) {
                     b.next_manifest = b.clock + 45.0;
@@ -382,7 +418,7 @@ impl Hunt {
             self.stop(End::Bluff);
             return;
         }
-        let fresh = b.seen.is_some_and(|m| m.expires - b.clock >= 7.65);
+        let fresh = b.seen.is_some_and(|m| m.age(b.clock) <= 1.30);
         if !fresh && !self.guided {
             self.stop(End::Lost);
             return;
@@ -395,36 +431,30 @@ impl Hunt {
     }
 
     fn run(&mut self, b: &mut Brain, dt: f32, f: &Frame) {
-        if self.age >= self.tuning.duration {
+        if self.age >= self.tuning.duration + 4.5 || self.effort >= self.tuning.duration {
             self.stop(End::Time);
             return;
         }
-        let seen = b.seen.filter(|m| m.expires - b.clock > 6.74);
-        let heard = b.heard.filter(|m| m.expires - b.clock > 5.8);
-        let fresh = seen.filter(|m| m.expires - b.clock > 8.76);
-        if fresh.is_some() || heard.is_some() {
-            self.last_signal = b.clock;
-        }
-        if b.clock - self.last_signal > 2.15
-            || (seen.is_none() && heard.is_none() && self.age > 2.15)
-        {
-            self.stop(End::Lost);
-            return;
-        }
-        let target = fresh
-            .or(heard)
-            .or(seen)
-            .map(|m| m.at)
-            .unwrap_or(self.start_target);
-        if body_contact(f, b.pos, b.pos, b.yaw, self.tuning.reach) {
-            self.stop(End::Contact);
-            return;
-        }
-        if self.old_door != f.door_closed {
-            b.path.clear();
-            self.planned = None;
-            self.next_plan = b.clock;
+
+        let door_changed = self.old_door != f.door_closed;
+        if door_changed {
             self.old_door = f.door_closed;
+            self.invalidate(b);
+            self.blocked = 0.0;
+            b.memory
+                .record(b.clock, "a porta mudou durante a caçada", b.hit_sector);
+        }
+
+        let Some((target, fallback)) = self.objective(b, f, dt) else {
+            return;
+        };
+        let attack = matches!(self.strategy, Strategy::Direct | Strategy::Intercept);
+        if attack {
+            self.effort += dt;
+            if body_contact(f, b.pos, b.pos, b.yaw, self.tuning.reach) {
+                self.stop(End::Contact);
+                return;
+            }
         }
         if b.clock >= self.next_plan
             && (b.path.get(b.waypoint).is_none()
@@ -432,33 +462,39 @@ impl Hunt {
                     .planned
                     .is_none_or(|p| p.distance_squared(target) > 0.20))
         {
-            self.next_plan = b.clock + 0.34;
+            self.next_plan = b.clock + if attack { 0.19 } else { 0.36 };
             self.planned = Some(target);
             b.waypoint = 0;
-            b.goal = pursuit_route(f, b, target, self.tuning.reach);
+            b.goal = pursuit_route(f, b, target, self.tuning.reach)
+                .or_else(|| fallback.and_then(|at| pursuit_route(f, b, at, self.tuning.reach)));
+            b.memory.replans += 1;
         }
-        if let Some(&ahead) = b.path.get(b.waypoint)
-            && ahead.distance(b.pos) < 0.15
+        while b
+            .path
+            .get(b.waypoint)
+            .is_some_and(|p| p.distance_squared(b.pos) < 0.15 * 0.15)
         {
             b.waypoint += 1;
         }
         if b.path.get(b.waypoint).is_none() {
-            let yaw = turn(b.yaw, angle(target - b.pos), dt * 3.8);
+            let yaw = turn(b.yaw, angle(fallback.unwrap_or(target) - b.pos), dt * 3.8);
             if motor_clear(f, b.pos, b.pos, b.yaw, yaw) {
                 b.yaw = yaw;
             }
-            self.blocked += dt;
+            // Uma intercepção cumprida permite vigiar brevemente a passagem.
+            // Enquanto o alvo se move, a visão pode substituir a hipótese.
+            if self.strategy == Strategy::Intercept && b.pos.distance_squared(target) < 0.6 {
+                self.blocked += dt * 0.8;
+            } else {
+                self.blocked += dt;
+            }
             self.speed = (self.speed - dt * 7.0).max(0.0);
-            if self.blocked > 0.75 {
-                self.stop(if b.pos.distance(target) < 1.1 {
-                    End::Lost
-                } else {
-                    End::Route
-                });
+            if self.blocked > 0.82 {
+                self.route_failed(b);
             }
             return;
         }
-        // Salta pontos próximos apenas quando o corredor comporta a postura orientada.
+
         for (i, &far) in b.path.iter().enumerate().skip(b.waypoint + 1).take(4) {
             let bearing = angle(far - b.pos);
             if f.nav
@@ -470,36 +506,42 @@ impl Hunt {
         }
         let next_point = b.path[b.waypoint];
         let direction = next_point - b.pos;
-        let turning = angle(direction);
-        let yaw = turn(b.yaw, turning, dt * 3.8);
-        let alignment = forward(b.yaw)
+        let yaw = turn(b.yaw, angle(direction), dt * 3.8);
+        let alignment = forward(yaw)
             .dot(direction.normalize_or_zero())
             .clamp(0.0, 1.0);
         let curve = b.path.get(b.waypoint + 1).is_some_and(|p| {
-            direction.length() < 1.5
+            direction.length_squared() < 1.5 * 1.5
                 && direction
                     .normalize_or_zero()
                     .dot((*p - next_point).normalize_or_zero())
                     < 0.64
         });
-        let goal_speed = self.tuning.speed * alignment.powi(4) * if curve { 0.53 } else { 1.0 };
+        let limit = if attack { self.tuning.speed } else { 1.45 };
+        let goal_speed = limit * alignment.powi(4) * if curve { 0.53 } else { 1.0 };
         self.speed += (goal_speed - self.speed).clamp(-8.0 * dt, self.tuning.acceleration * dt);
         let step = direction.clamp_length_max(self.speed * dt * alignment.powi(3));
-        let next = b.pos + step;
-        if motor_clear(f, b.pos, next, b.yaw, yaw) {
+        let from = b.pos;
+        let next = from + step;
+        if motor_clear(f, from, next, b.yaw, yaw) {
             b.yaw = yaw;
             b.moving = step.length() / dt.max(0.001);
             b.pos = next;
             self.progress += step.length();
             self.distance += step.length();
             self.peak = self.peak.max(b.moving);
-            self.blocked = 0.0;
-            if body_contact(f, next - step, next, yaw, self.tuning.reach) {
+            if self.blocked > 0.30 && b.moving > 0.16 {
+                b.memory.recovered += 1;
+            }
+            if b.moving > 0.16 {
+                self.blocked = 0.0;
+            }
+            if attack && body_contact(f, from, next, yaw, self.tuning.reach) {
                 self.stop(End::Contact);
                 return;
             }
         } else {
-            if motor_clear(f, b.pos, b.pos, b.yaw, yaw) {
+            if motor_clear(f, from, from, b.yaw, yaw) {
                 b.yaw = yaw;
             }
             self.blocked += dt;
@@ -507,15 +549,171 @@ impl Hunt {
             if self.blocked > 0.36 && b.clock >= self.next_plan {
                 b.path.clear();
             }
-            if self.blocked > 0.86 {
-                self.stop(End::Route);
+            if self.blocked > 0.96 {
+                self.route_failed(b);
             }
         }
         if self.age >= 0.70 && self.age - dt < 0.70 {
             self.cue = Some(Cue::Breath);
         }
-        if self.age >= 1.7 && self.age - dt < 1.7 {
+        if attack && self.age >= 1.7 && self.age - dt < 1.7 {
             self.cue = Some(Cue::Vocal);
+        }
+    }
+
+    fn invalidate(&mut self, b: &mut Brain) {
+        b.path.clear();
+        b.goal = None;
+        b.waypoint = 0;
+        self.planned = None;
+        self.next_plan = b.clock;
+    }
+
+    fn objective(&mut self, b: &mut Brain, f: &Frame, dt: f32) -> Option<(Vec2, Option<Vec2>)> {
+        let (knowledge, clue) = b.knowledge();
+        if knowledge == Knowledge::Confirmed
+            && let Some(clue) = clue
+        {
+            self.last_signal = clue.when;
+            if self.search.clue.is_some() {
+                b.memory.reacquired += 1;
+                b.memory
+                    .record(b.clock, "retomou após confirmar visualmente", clue.sector);
+                self.search = SearchPlan::default();
+                self.invalidate(b);
+                self.blocked = 0.0;
+            }
+            if b.clock >= self.next_tactic {
+                self.next_tactic = b.clock + 0.56;
+                let previous = self.intercept;
+                self.intercept = if b.clock >= self.no_intercept_until {
+                    tactics::intercept(
+                        f.nav,
+                        &b.memory,
+                        b.pos,
+                        clue,
+                        b.clock,
+                        f.door_closed,
+                        self.tuning.speed,
+                    )
+                } else {
+                    None
+                };
+                if previous.map(|x| x.0) != self.intercept.map(|x| x.0) {
+                    if let Some((link, _)) = previous
+                        && clue.sector != Some(link[1])
+                    {
+                        b.memory.failed(link, b.clock);
+                    }
+                    self.invalidate(b);
+                    if self.intercept.is_some() {
+                        b.memory.record(
+                            b.clock,
+                            "antecipou uma passagem a partir do deslocamento observado",
+                            clue.sector,
+                        );
+                    }
+                }
+            }
+            if let Some((_, position)) = self.intercept {
+                self.strategy = Strategy::Intercept;
+                return Some((position, None));
+            }
+            self.strategy = Strategy::Direct;
+            let prediction = clue.at + (clue.velocity * 0.23).clamp_length_max(1.2);
+            let forward = f.nav.sector(prediction) == clue.sector
+                && f.nav.clear(
+                    point(clue.at).with_y(1.1),
+                    point(prediction).with_y(1.1),
+                    f.door_closed,
+                );
+            return Some(if forward && prediction.distance_squared(clue.at) > 0.09 {
+                (prediction, Some(clue.at))
+            } else {
+                (clue.at, None)
+            });
+        }
+
+        if self.search.clue.is_none() && b.clock - self.last_signal < 0.52 {
+            self.strategy = Strategy::Direct;
+            return Some((b.seen.map_or(self.start_target, |m| m.at), None));
+        }
+        if let Some(clue) = clue
+            && (self.search.clue.is_none() || self.search.can_revise(clue, b.clock))
+        {
+            let revise = self.search.clue.is_some();
+            let revisions = self.search.revisions + u8::from(revise);
+            if let Some((link, _)) = self.intercept.take() {
+                b.memory.failed(link, b.clock);
+            }
+            self.search = SearchPlan::build(f.nav, &b.memory, clue, b.clock, f.door_closed);
+            self.search.revisions = revisions;
+            self.invalidate(b);
+            self.blocked = 0.0;
+            b.memory.record(
+                b.clock,
+                if revise {
+                    "novo indício durante a busca"
+                } else {
+                    "passou da corrida à busca"
+                },
+                clue.sector,
+            );
+        }
+
+        match self.search.current() {
+            Some(SearchStep::Go { at, link }) => {
+                self.strategy = if link.is_some() {
+                    Strategy::SectorSearch
+                } else {
+                    Strategy::LocalSearch
+                };
+                if b.pos.distance_squared(at) < 0.83 * 0.83
+                    || self.planned == Some(at)
+                        && b.goal
+                            .is_some_and(|p| p.distance_squared(b.pos) < 0.18 * 0.18)
+                {
+                    self.search.next(b.clock);
+                    self.invalidate(b);
+                    self.speed = 0.0;
+                    self.blocked = 0.0;
+                    return None;
+                }
+                Some((at, None))
+            }
+            Some(SearchStep::Listen(duration)) => {
+                self.speed = (self.speed - dt * 7.0).max(0.0);
+                b.head = ((b.clock - self.search.since) * 5.7).sin() * 0.47;
+                if b.clock - self.search.since >= duration {
+                    self.search.next(b.clock);
+                    self.invalidate(b);
+                }
+                None
+            }
+            None => {
+                self.stop(End::Lost);
+                None
+            }
+        }
+    }
+
+    fn route_failed(&mut self, b: &mut Brain) {
+        b.memory.blocked += 1;
+        b.memory
+            .record(b.clock, "movimento ou trajeto sem espaço", b.hit_sector);
+        self.blocked = 0.0;
+        self.invalidate(b);
+        if let Some((link, _)) = self.intercept.take() {
+            b.memory.failed(link, b.clock);
+            self.no_intercept_until = b.clock + 1.8;
+            self.next_tactic = b.clock;
+        } else if let Some(SearchStep::Go { link, .. }) = self.search.current() {
+            if let Some(link) = link {
+                b.memory.failed(link, b.clock);
+            }
+            self.search.next(b.clock);
+        } else {
+            self.stop(End::Route);
         }
     }
 }
@@ -553,7 +751,14 @@ fn pursuit_route(f: &Frame, b: &mut Brain, target: Vec2, reach: f32) -> Option<V
             b.path.push(target);
             return Some(target);
         }
-        if f.nav.plan(b.pos, target, f.door_closed, true, &mut b.path) {
+        if f.nav.plan(
+            b.pos,
+            target,
+            f.door_closed,
+            true,
+            &mut b.path,
+            &mut b.route,
+        ) {
             return Some(target);
         }
     }
@@ -588,9 +793,10 @@ fn pursuit_route(f: &Frame, b: &mut Brain, target: Vec2, reach: f32) -> Option<V
         b.path.push(at);
         return Some(at);
     }
-    candidates
-        .take(2)
-        .find(|&p| f.nav.plan(b.pos, p, f.door_closed, true, &mut b.path))
+    candidates.take(2).find(|&p| {
+        f.nav
+            .plan(b.pos, p, f.door_closed, true, &mut b.path, &mut b.route)
+    })
 }
 
 pub fn half_at(yaw: f32) -> Vec3 {
@@ -773,6 +979,36 @@ mod tests {
         }
         assert!(matches!(b.hunt.end, Some(End::Lost | End::Route)));
         assert!(!b.hunt.pending);
+    }
+
+    #[test]
+    fn searches_while_occluded_and_resumes_the_same_hunt_when_the_door_opens() {
+        let nav = stage(true);
+        let mut b = begin(Vec2::new(0., 3.), false);
+        let mut searched = false;
+        let mut once = 0;
+        let mut hidden_reference = None;
+        for _ in 0..620 {
+            let closed = b.hunt.phase == Phase::Run && (0.30..1.46).contains(&b.hunt.age);
+            let target = if closed { 3.60 } else { 3.0 };
+            if !closed {
+                hidden_reference = b.seen.map(|m| m.at);
+            }
+            b.step(1. / 60., &rehearsal(&nav, target, closed), default(), true);
+            if closed {
+                assert_eq!(b.seen.map(|m| m.at), hidden_reference);
+                assert!(!b.hunt.pending && b.pos.y < 0.0);
+                searched |= b.hunt.strategy == Strategy::LocalSearch;
+            }
+            once += u32::from(std::mem::take(&mut b.hunt.pending));
+            if b.hunt.end.is_some() {
+                break;
+            }
+        }
+        assert!(searched);
+        assert_eq!(b.memory.reacquired, 1);
+        assert_eq!(b.hunt.end, Some(End::Contact));
+        assert_eq!(once, 1);
     }
 
     #[test]
