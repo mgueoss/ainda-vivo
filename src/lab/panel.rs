@@ -7,7 +7,9 @@ use super::{
         hunt::Contact,
     },
     settings::{Category, Config, Lighting, MAX_INSTANCES, Model, Preset, Tab},
+    sound_lab::Command as Sound,
 };
+use crate::atmosphere::sound::presence_audio::{Family, Pattern};
 use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
     input::{ButtonState, keyboard::KeyboardInput, mouse::AccumulatedMouseScroll},
@@ -62,6 +64,8 @@ pub(super) enum Label {
     ObserverValue(AiKnob),
     HuntStatus,
     HuntValue(HuntKnob),
+    SoundStatus,
+    SoundSource,
 }
 
 pub(super) fn spawn(commands: &mut Commands, camera: Entity, config: &Config) -> Entity {
@@ -219,7 +223,10 @@ fn inspector(side: &mut ChildSpawnerCommands) {
         button(line, "Luz", Action::SetTab(Tab::Lighting));
         button(line, "Animação", Action::SetTab(Tab::Animation));
         button(line, "IA", Action::SetTab(Tab::Observer));
+    });
+    row(side).with_children(|line| {
         button(line, "Caçada", Action::SetTab(Tab::Hunt));
+        button(line, "Som", Action::SetTab(Tab::Sound));
         button(line, "Ajuda", Action::SetTab(Tab::Help));
     });
     scroll(side).with_children(|list| {
@@ -368,6 +375,43 @@ fn inspector(side: &mut ChildSpawnerCommands) {
             button(view,"Contextual",Action::Hunt(Hunt::Result(None)));
             for contact in Contact::ALL { button(view,contact.label(),Action::Hunt(Hunt::Result(Some(contact)))); }
             button(view,"Simular contato selecionado",Action::Hunt(Hunt::Rehearse));
+        });
+        group(list, Tab::Sound).with_children(|view| {
+            view.spawn((text("", 12.0, ACCENT), Label::SoundStatus));
+            view.spawn((text("", 11.0, MUTED), Label::SoundSource));
+            for (left, right) in [
+                (("Repetir", Sound::Play), ("Variação", Sound::Variation)),
+                (("Categoria", Sound::Category), ("Posição", Sound::Position)),
+                (("Porta", Sound::Door), ("Guias", Sound::Guides)),
+                (("Reverberação", Sound::Reverb), ("Abafamento", Sound::Occlusion)),
+                (("Caminhada", Sound::Walk), ("Corrida física", Sound::Chase)),
+            ] {
+                row(view).with_children(|line| {
+                    for (label, action) in [left, right] {
+                        button(line, label, Action::Sound(action));
+                    }
+                });
+            }
+            for (label, control) in [
+                ("Volume", Sound::Gain as fn(i8) -> Sound),
+                ("Pitch", Sound::Pitch),
+                ("Distância", Sound::Distance),
+            ] {
+                row(view).with_children(|line| {
+                    line.spawn((text(label, 12.0, MUTED), Node { flex_grow: 1.0, ..default() }));
+                    button(line, "−", Action::Sound(control(-1)));
+                    button(line, "+", Action::Sound(control(1)));
+                });
+            }
+            section(view, "SEQUÊNCIAS ESPACIAIS");
+            for pattern in [Pattern::Knock, Pattern::Breath, Pattern::Trail, Pattern::Rush, Pattern::Far] {
+                button(view, pattern.label(), Action::Sound(Sound::Pattern(pattern)));
+            }
+            button(view, "Interromper sequência", Action::Sound(Sound::Stop));
+            section(view, "BIBLIOTECA DA PRESENÇA");
+            for family in Family::ALL {
+                button(view, family.label(), Action::Sound(Sound::Family(family)));
+            }
         });
         group(list, Tab::Help).with_children(|view| {
             section(view, "ATALHOS");
@@ -701,6 +745,7 @@ pub(super) fn refresh(
         Query<(&AnimationPlayer, &library::Player)>,
         Query<&library::Viewer>,
     ),
+    sources: Query<&crate::atmosphere::sound::presence_audio::PresenceEmitter>,
     mut previous_count: Local<Option<(Entity, u32, bool)>>,
 ) {
     let Some(active) = &lab.active else { return };
@@ -776,6 +821,10 @@ pub(super) fn refresh(
             Action::Observer(AI::Guides) => active.observer.guides,
             Action::Hunt(Hunt::Result(result)) => active.observer.hunt.selected == result,
             Action::Hunt(Hunt::Psychology) => active.observer.hunt.psychological,
+            Action::Sound(Sound::Reverb) => active.sound.reverb,
+            Action::Sound(Sound::Occlusion) => active.sound.occlusion,
+            Action::Sound(Sound::Guides) => active.sound.guides,
+            Action::Sound(Sound::Door) => active.observer.closed,
             Action::Observer(AI::Select(state)) => {
                 active.observer.enabled && active.observer.brain.state == state
             }
@@ -859,6 +908,37 @@ pub(super) fn refresh(
                 } else {
                     continue;
                 }
+            }
+            Label::SoundStatus => {
+                if config.tab != Tab::Sound {
+                    continue;
+                }
+                active.sound.status(
+                    active.camera_transform(&config).translation,
+                    active.observer.closed,
+                )
+            }
+            Label::SoundSource => {
+                if config.tab != Tab::Sound {
+                    continue;
+                }
+                sources
+                    .iter()
+                    .filter(|source| source.request.lab)
+                    .max_by(|a, b| a.audible.total_cmp(&b.audible))
+                    .map_or_else(
+                        || "Sem fonte ativa".into(),
+                        |source| {
+                            format!(
+                                "{} · {}\nNível {:.0}% · transmissão {:.0}% · filtro {:.0}%",
+                                source.request.category.label(),
+                                source.request.family.label(),
+                                source.audible * 100.,
+                                source.transmission * 100.,
+                                source.muffle * 100.
+                            )
+                        },
+                    )
             }
             Label::Technical => {
                 let sample = |id: &bevy::diagnostic::DiagnosticPath| {

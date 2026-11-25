@@ -441,7 +441,14 @@ pub(super) fn update_campaign(
             brain.hunt.result,
             Some(hunt::Contact::Capture | hunt::Contact::Quiet)
         );
+        let quiet_entrance = (director.initial_seed() ^ mode.started.wrapping_mul(0x9e3779b9))
+            .is_multiple_of(3)
+            && matches!(
+                cue,
+                hunt::Cue::Ready | hunt::Cue::Rupture | hunt::Cue::Acceleration
+            );
         if !silent
+            && !quiet_entrance
             && !(cue == hunt::Cue::Contact
                 && brain.hunt.phase == hunt::Phase::Brake
                 && brain.hunt.result == Some(hunt::Contact::Intimidation))
@@ -449,6 +456,7 @@ pub(super) fn update_campaign(
             ctx.signals.write(hunt::Signal {
                 cue,
                 at: point(brain.pos).with_y(0.45),
+                lab: false,
             });
         }
         if cue == hunt::Cue::Acceleration && session.psychology.value() < 75.0 {

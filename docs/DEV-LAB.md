@@ -1,6 +1,14 @@
 # Dev Lab do AINDA VIVO
 
-A build experimental v0.0.12-dev.4 inclui o Dev Lab. No pacote Windows, extraia os arquivos e execute **ABRIR DEV LAB.cmd**. No menu ou durante a campanha, pressione **Ctrl+I** para entrar ou voltar. O botão de busca recebe a digitação até **Enter**, **Esc** ou um clique em outro controle.
+A build experimental v0.0.12-dev.5 inclui o Dev Lab. No pacote Windows, extraia os arquivos e execute **ABRIR DEV LAB.cmd**. No menu ou durante a campanha, pressione **Ctrl+I** para entrar ou voltar. O botão de busca recebe a digitação até **Enter**, **Esc** ou um clique em outro controle.
+
+## Som
+
+- **Biblioteca da Presença** toca cada família. **Variação** percorre três amostras e **Repetir** toca de novo. **Categoria** permite comparar manifestação, ilusão e falsa realidade com a mesma amostra.
+- **Posição** move a fonte de teste para frente, esquerda, direita ou atrás da porta. Mude a distância pelos botões **−** e **+** ou desloque a própria câmera. **Porta** monta o corredor de teste e alterna a barreira. Compare a mesma passada com a porta aberta e fechada.
+- **Caminhada** e **Corrida física** usam as animações e seus marcadores. **Caçada invisível** usa os mesmos sons em movimento sem precisar de criatura física. **Interromper sequência** suspende os novos pulsos da simulação, deixando as caudas curtas terminarem.
+- **Reverberação** seleciona a amostra com reflexões curtas. **Abafamento** ativa a consulta aos obstáculos. **Guias** mostra um marcador na última origem com anéis fixos de referência. Os percentuais no painel mostram ganho do canal mais forte, transmissão e filtro da fonte ativa mais audível.
+- As fontes respeitam as opções globais de ambiência e intensidade audiovisual. Use `--smoke-sonoro --seed 20261118 --smoke-report resultado.txt` para a rotina automatizada com dispositivo de áudio. [Arquitetura do áudio](AUDIO-PRESENCA-v0.0.12-dev.5.md)
 
 | Atalho | Ação |
 |---|---|

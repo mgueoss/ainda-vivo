@@ -1125,7 +1125,7 @@ pub(super) fn animate_observer(
         let dt = time.delta_secs();
         let mut marker = |event| {
             use super::observer::hunt::{Cue, Signal};
-            if pose.lab || !pose.hunting || !matches!(pose.clip, 26..=28) {
+            if !matches!(pose.clip, 13 | 14 | 19 | 26..=28) {
                 return;
             }
             let (cue, lateral, depth) = match event {
@@ -1135,9 +1135,16 @@ pub(super) fn animate_observer(
                 motion::EventKind::HandRight => (Cue::Hand, -0.27, 0.47),
                 _ => return,
             };
+            let cue = match pose.clip {
+                13 => Cue::Walk,
+                14 => Cue::Hurry,
+                19 => Cue::Approach,
+                _ => cue,
+            };
             signals.write(Signal {
                 cue,
                 at: transform.transform_point(Vec3::new(lateral, 0.08, depth)),
+                lab: pose.lab,
             });
         };
         if let Some(phase) = pose.sample {

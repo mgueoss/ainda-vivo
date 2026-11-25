@@ -24,7 +24,7 @@ pub(super) const LAYER: usize = 6;
 pub(super) const FLOOR: f32 = 0.025;
 
 #[derive(Component)]
-pub(super) struct LabCamera;
+pub(crate) struct LabCamera;
 #[derive(Component)]
 pub(super) struct KeyLight;
 #[derive(Component)]

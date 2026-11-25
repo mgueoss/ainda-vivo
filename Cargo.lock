@@ -76,7 +76,7 @@ dependencies = [
 
 [[package]]
 name = "ainda-vivo"
-version = "0.0.12-dev.4"
+version = "0.0.12-dev.5"
 dependencies = [
  "ainda_vivo_core",
  "bevy",

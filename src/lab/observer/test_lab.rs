@@ -356,6 +356,7 @@ pub fn update_lab(
     catalog: Res<Catalog>,
     time: Res<Time>,
     (mut meshes, mut materials): (ResMut<Assets<Mesh>>, ResMut<Assets<StandardMaterial>>),
+    mut signals: MessageWriter<hunt::Signal>,
 ) {
     let Some(active) = &mut lab.active else {
         return;
@@ -411,6 +412,13 @@ pub fn update_lab(
         }
         lab.brain
             .step(time.delta_secs(), &frame, lab.tuning, lab.automatic);
+        if let Some(cue) = lab.brain.hunt.cue.take() {
+            signals.write(hunt::Signal {
+                cue,
+                at: point(lab.brain.pos).with_y(0.45),
+                lab: true,
+            });
+        }
         if std::mem::take(&mut lab.brain.hunt.pending) {
             lab.brain.hunt.result = Some(lab.hunt.contact());
         }

@@ -1,5 +1,11 @@
 # Changelog
 
+## v0.0.12-dev.5 — Ecos da Caçada
+
+- A Presença usa uma biblioteca original com passadas, apoios, atrito, respiração e voz sintetizada. Os marcadores de animação acionam os sons físicos de caminhada e corrida quadrúpede.
+- As fontes ganham direção, atenuação, abafamento por obstáculos e reflexões curtas. O diretor pode criar aproximações sonoras e caçadas invisíveis em setores vizinhos com a mesma biblioteca.
+- A aba **Som** do Dev Lab reúne amostras, variações, teste de porta, caminhada, caçada física e sequências ilusórias. [Guia](docs/DEV-LAB.md) · [Áudio da Presença](docs/AUDIO-PRESENCA-v0.0.12-dev.5.md) · [Handoff](AINDA-VIVO-HANDOFF-v0.0.12-dev.5.md)
+
 ## v0.0.12-dev.4 — A Caçada
 
 - A Presença física pode preparar uma arrancada ou desistir da ameaça. A corrida usa as animações quadrúpedes existentes, adapta a velocidade às curvas e abandona rastros perdidos.

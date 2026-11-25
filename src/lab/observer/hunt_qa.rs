@@ -121,6 +121,9 @@ pub(in crate::lab) fn verify(
     c.frames += 1;
     let f = c.frames;
     for signal in scene.signals.read() {
+        if signal.lab {
+            continue;
+        }
         match signal.cue {
             Cue::Hand => c.hands += 1,
             Cue::Foot => c.feet += 1,

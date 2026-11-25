@@ -18,6 +18,10 @@ pub use incidents::IncidentSchedule;
 use incidents::Kind;
 pub use spatial::Voice;
 use spatial::{MixTarget, RATE, channels};
+#[cfg(feature = "dev-lab")]
+pub(crate) mod presence_audio;
+#[cfg(feature = "dev-lab")]
+mod presence_bank;
 
 #[derive(Resource)]
 pub struct SoundBank {
@@ -51,8 +55,6 @@ enum Sound {
     Trailing,
     Reception,
     ServiceEcho,
-    #[cfg(feature = "dev-lab")]
-    Hunt(f32),
 }
 
 #[derive(Component)]
@@ -454,48 +456,6 @@ fn one_shot(
     ));
 }
 
-#[cfg(feature = "dev-lab")]
-pub(crate) fn emit_hunt(
-    mut commands: Commands,
-    mut audio: ResMut<Assets<Voice>>,
-    session: Res<Session>,
-    comfort: Res<Comfort>,
-    bank: Res<SoundBank>,
-    mut last_step: Local<(u64, f32)>,
-    mut signals: MessageReader<crate::lab::observer::hunt::Signal>,
-) {
-    use crate::lab::observer::hunt::Cue;
-    if session.screen != Screen::Playing || comfort.ambience_muted || comfort.psycho_av <= 0.0 {
-        signals.clear();
-        return;
-    }
-    if last_step.0 != session.attempt {
-        *last_step = (session.attempt, -1.0);
-    }
-    for signal in signals.read() {
-        let (sample, gain) = match signal.cue {
-            Cue::Hand | Cue::Foot if session.elapsed - last_step.1 >= 0.135 => {
-                last_step.1 = session.elapsed;
-                (&bank.shoes[usize::from(signal.cue == Cue::Foot)], 0.35)
-            }
-            Cue::Rupture => (&bank.rail_scrape, 0.23),
-            Cue::Acceleration => (&bank.shoes[1], 0.28),
-            Cue::Breath | Cue::Retreat => (&bank.trailing[0], 0.18),
-            Cue::Contact => (&bank.contact, 0.34),
-            _ => continue,
-        };
-        one_shot(
-            &mut commands,
-            &mut audio,
-            &session,
-            sample.clone(),
-            Sound::Hunt(gain * comfort.psycho_av),
-            signal.at,
-            3.0,
-        );
-    }
-}
-
 #[derive(Default)]
 pub struct Trail {
     until: f32,
@@ -734,8 +694,6 @@ pub fn mix(
                 Sound::Trailing => 0.47,
                 Sound::Reception => 0.47,
                 Sound::ServiceEcho => 0.72,
-                #[cfg(feature = "dev-lab")]
-                Sound::Hunt(gain) => gain,
             };
         if matches!(emitter.sound, Sound::Room) {
             let centre = gain * std::f32::consts::FRAC_1_SQRT_2;

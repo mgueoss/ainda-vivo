@@ -5,6 +5,9 @@ pub(crate) mod observer;
 mod panel;
 mod qa;
 mod room;
+mod sound_lab;
+mod sound_qa;
+pub(crate) use room::LabCamera;
 mod settings;
 
 use crate::{
@@ -49,6 +52,7 @@ pub(super) struct Options {
     motion_smoke: bool,
     observer_smoke: bool,
     hunt_smoke: bool,
+    sound_smoke: bool,
     record_motion: bool,
     captures: Option<PathBuf>,
 }
@@ -65,8 +69,10 @@ impl Options {
         let motion_smoke = has("--smoke-motion");
         let observer_smoke = has("--smoke-observer");
         let hunt_smoke = has("--smoke-hunt");
+        let sound_smoke = has("--smoke-sonoro");
         let physical = has("--presence-physical") || observer_smoke || hunt_smoke;
-        let smoke = has("--smoke-lab") || motion_smoke || observer_smoke || hunt_smoke;
+        let smoke =
+            has("--smoke-lab") || motion_smoke || observer_smoke || hunt_smoke || sound_smoke;
         let enabled = has("--dev-lab") || smoke || physical;
         let local =
             std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("AindaVivo/dev-lab"));
@@ -91,6 +97,7 @@ impl Options {
             motion_smoke,
             observer_smoke,
             hunt_smoke,
+            sound_smoke,
             record_motion: motion_smoke && has("--lab-record-motion"),
         }
     }
@@ -146,7 +153,6 @@ impl Plugin for LabPlugin {
             .insert_resource(observer::Campaign::new(physical))
             .add_message::<Action>()
             .add_message::<motion::MotionEvent>()
-            .add_message::<observer::hunt::Signal>()
             .add_systems(Startup, library::begin_import)
             .add_systems(
                 PreUpdate,
@@ -155,6 +161,7 @@ impl Plugin for LabPlugin {
                     motion_qa::open,
                     observer::qa::keys,
                     observer::hunt_qa::keys,
+                    sound_qa::keys,
                     switch.in_set(crate::app::BeforeCampaign),
                 )
                     .chain()
@@ -172,18 +179,13 @@ impl Plugin for LabPlugin {
             .add_systems(Update, library::animate_observer)
             .add_systems(
                 Update,
-                crate::atmosphere::sound::emit_hunt
-                    .after(observer::update_campaign)
-                    .run_if(campaign_running),
-            )
-            .add_systems(
-                Update,
                 (
                     panel::input,
                     shortcuts,
                     actions,
                     camera_input,
                     observer::update_lab,
+                    sound_lab::update,
                     library::animate,
                     library::sync,
                     library::remember_events,
@@ -206,7 +208,13 @@ impl Plugin for LabPlugin {
             )
             .add_systems(Last, (qa::verify, motion_qa::verify));
         let options = app.world().resource::<Options>();
-        if options.hunt_smoke {
+        if options.sound_smoke {
+            app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
+                std::time::Duration::from_secs_f64(1.0 / 60.0),
+            ))
+            .init_resource::<sound_qa::Check>()
+            .add_systems(Last, sound_qa::verify);
+        } else if options.hunt_smoke {
             app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
                 std::time::Duration::from_secs_f64(1.0 / 60.0),
             ))
@@ -252,6 +260,27 @@ struct Active {
     orbit: Option<Orbit>,
     playback: Playback,
     observer: observer::TestLab,
+    sound: sound_lab::SoundLab,
+}
+
+impl Lab {
+    pub(crate) fn audio_geometry(
+        &self,
+    ) -> Option<(
+        &[ainda_vivo_core::collision::Aabb],
+        Option<ainda_vivo_core::collision::Aabb>,
+    )> {
+        let active = self.active.as_ref()?;
+        Some((&active.room.solids, active.observer.solid()))
+    }
+    pub(crate) fn tune_sound(
+        &self,
+        request: &mut crate::atmosphere::sound::presence_audio::Request,
+    ) {
+        if let Some(active) = &self.active {
+            active.sound.apply(request);
+        }
+    }
 }
 
 #[derive(Clone, Copy)]
@@ -415,7 +444,10 @@ fn switch(
     config: Res<Config>,
     mut lab: ResMut<Lab>,
     mut views: Views,
-    audio: Query<(Entity, &AudioSink)>,
+    audio: Query<
+        (Entity, &AudioSink),
+        Without<crate::atmosphere::sound::presence_audio::PresenceEmitter>,
+    >,
     mut meshes: ResMut<Assets<Mesh>>,
     mut materials: ResMut<Assets<StandardMaterial>>,
 ) {
@@ -427,6 +459,7 @@ fn switch(
     }
     if let Some(mut old) = lab.active.take() {
         old.observer.dispose(&mut commands);
+        old.sound.dispose(&mut commands);
         for model in &views.models {
             commands.entity(model).despawn();
         }
@@ -496,12 +529,13 @@ fn switch(
         orbit: None,
         playback: Playback::default(),
         observer: observer::TestLab::default(),
+        sound: sound_lab::SoundLab::default(),
     };
     current.reset_view(&config.lens);
     lab.active = Some(current);
 }
 
-fn hold_campaign_audio(mut lab: ResMut<Lab>, audio: Query<(Entity, &AudioSink), Added<AudioSink>>) {
+fn hold_campaign_audio(mut lab: ResMut<Lab>, audio: sound_lab::CampaignSinks) {
     if let Some(active) = &mut lab.active {
         for (id, sink) in &audio {
             if !sink.is_paused() {
@@ -569,6 +603,7 @@ enum Action {
     FollowGaze,
     Observer(observer::Command),
     Hunt(observer::HuntCommand),
+    Sound(sound_lab::Command),
     Step(i8),
     Play,
     Repeat,
@@ -835,6 +870,7 @@ fn actions(
             }
             Action::Observer(command) => observer::command(active, &mut config, command),
             Action::Hunt(command) => observer::hunt_command(active, &mut config, command),
+            Action::Sound(command) => sound_lab::command(active, &mut config, command),
             Action::FollowGaze => {
                 if active.playback.follow_gaze {
                     active.playback.follow_gaze = false;
@@ -939,6 +975,8 @@ fn actions(
             Action::Reset => {
                 active.observer.dispose(&mut commands);
                 active.observer = observer::TestLab::default();
+                active.sound.dispose(&mut commands);
+                active.sound = default();
                 *config = Config::default();
                 active.reset_view(&config.lens);
                 active.playback = Playback::default();

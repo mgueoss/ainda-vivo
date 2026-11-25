@@ -344,6 +344,8 @@ pub fn restart(session: &mut Session, player: &mut LocalPlayer, comfort: &mut Co
 
 pub fn run() -> bevy::app::AppExit {
     let smoke = crate::smoke::SmokeTest::from_args();
+    #[cfg(feature = "dev-lab")]
+    let lab = crate::lab::Options::from_args();
     info!("AINDA VIVO {VERSION}");
     let (preferences, mut comfort) = crate::preferences::Preferences::load(smoke.enabled);
     if smoke.enabled && !smoke.check_audio {
@@ -355,8 +357,6 @@ pub fn run() -> bevy::app::AppExit {
             std::time::Duration::from_secs_f64(1.0 / 60.0),
         ));
     }
-    #[cfg(feature = "dev-lab")]
-    let lab = crate::lab::Options::from_args();
     #[cfg(feature = "dev-lab")]
     {
         lab.configure_source(&mut app);
@@ -492,6 +492,8 @@ pub fn run() -> bevy::app::AppExit {
                 .chain()
                 .run_if(campaign_running),
         );
+    #[cfg(feature = "dev-lab")]
+    app.add_plugins(crate::atmosphere::sound::presence_audio::PresenceAudio);
     #[cfg(feature = "dev-lab")]
     if lab.enabled {
         app.add_plugins(crate::lab::LabPlugin);

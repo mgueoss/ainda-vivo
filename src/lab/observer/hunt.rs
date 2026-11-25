@@ -164,6 +164,11 @@ pub enum Phase {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub(crate) enum Cue {
+    Walk,
+    Hurry,
+    Approach,
+    Brake,
+    Stop,
     Rupture,
     Ready,
     Acceleration,
@@ -179,6 +184,7 @@ pub(crate) enum Cue {
 pub(crate) struct Signal {
     pub cue: Cue,
     pub at: Vec3,
+    pub lab: bool,
 }
 
 #[derive(Default)]
@@ -284,6 +290,9 @@ impl Hunt {
             Phase::Rise
         };
         self.brake_speed = self.speed;
+        if self.phase == Phase::Brake {
+            self.cue = Some(Cue::Brake);
+        }
         self.age = 0.0;
         if why == End::Contact {
             self.pending = true;
@@ -315,7 +324,11 @@ impl Hunt {
                 if self.age >= 0.44 {
                     self.phase = Phase::Rise;
                     self.age = 0.0;
-                    self.cue = Some(Cue::Retreat);
+                    self.cue = Some(if self.end == Some(End::Contact) {
+                        Cue::Retreat
+                    } else {
+                        Cue::Stop
+                    });
                 }
             }
             Phase::Rise if self.age >= 1.18 && self.result == Some(Contact::Intimidation) => {

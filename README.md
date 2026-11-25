@@ -47,7 +47,7 @@ O jogo pausa ao perder o foco. Fechar a janela encerra o programa. O menu permit
 
 ## Desenvolvimento
 
-A build experimental `v0.0.12-dev.4` inclui perseguições quadrúpedes, contato contextual e ensaios da caçada no Dev Lab. A v0.0.11 é a versão recomendada para jogar a campanha. [Guia do Dev Lab](docs/DEV-LAB.md) · [Handoff de A Caçada](AINDA-VIVO-HANDOFF-v0.0.12-dev.4.md)
+A build experimental `v0.0.12-dev.5` inclui passadas sincronizadas, voz sintetizada e caçadas sonoras invisíveis. Pressione **Ctrl+I** e abra a aba **Som** no Dev Lab. Para testar o áudio da criatura física na campanha, inicie com `--presence-physical` ou alterne com **F5**. A v0.0.11 continua disponível no GitHub. [Guia do Dev Lab](docs/DEV-LAB.md) · [Handoff de Ecos da Caçada](AINDA-VIVO-HANDOFF-v0.0.12-dev.5.md)
 
 Requisitos: Windows x64, Rust estável com Cargo, Visual Studio C++ Build Tools e Windows SDK. O ambiente original tem Rust/Cargo 1.97.1 e Visual Studio 2022 Community. Não é necessário instalar Blender para esta versão.
 
