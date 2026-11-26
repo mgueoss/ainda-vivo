@@ -77,7 +77,9 @@ fn main() {
     let result = package.and_then(|package| {
         let log = check::Log::open(&package.version)
             .map_err(|error| format!("Não foi possível criar o diagnóstico: {error}"))?;
-        ui::run(package, log)
+        let dev_lab = package.version.contains("-dev.")
+            && matches!(args.as_slice(), [flag] if flag == "--dev-lab");
+        ui::run(package, log, dev_lab)
             .map_err(|error| format!("Não foi possível abrir o inicializador: {error}"))
     });
     if let Err(message) = result {

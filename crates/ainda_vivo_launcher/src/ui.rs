@@ -52,6 +52,7 @@ struct Controls {
 struct Ui {
     pkg: Package,
     log: Log,
+    dev_lab: bool,
     controls: Option<Controls>,
     state: Readiness,
     worker: Option<Worker>,
@@ -97,7 +98,12 @@ impl Ui {
             match value {
                 Ok(value) => {
                     self.state = value.state;
-                    label(ctl.status, &value.status);
+                    let status = if self.dev_lab {
+                        value.status.replace("JOGAR", "ABRIR DEV LAB")
+                    } else {
+                        value.status
+                    };
+                    label(ctl.status, &status);
                     label(ctl.gpu, &value.compatibility);
                     label(ctl.dependencies, &value.dependencies);
                     progress(
@@ -134,7 +140,9 @@ impl Ui {
             self.log.write(&format!("O jogo encerrou com {status}."));
             label(
                 ctl.status,
-                if status.success() {
+                if status.success() && self.dev_lab {
+                    "Sessão encerrada. Clique em ABRIR DEV LAB para abrir novamente."
+                } else if status.success() {
                     "Sessão encerrada. Clique em JOGAR para abrir novamente."
                 } else {
                     "O jogo encerrou com erro. Abra DIAGNÓSTICO para consultar os registros."
@@ -148,7 +156,7 @@ impl Ui {
 
     fn play(&mut self) {
         let ctl = self.controls.as_ref().unwrap();
-        match self.log.launch(&self.pkg) {
+        match self.log.launch(&self.pkg, self.dev_lab) {
             Ok(child) => {
                 self.game = Some(child);
                 label(ctl.status, "Jogo em execução.");
@@ -230,11 +238,12 @@ fn font(size: i32, weight: i32, name: *const u16) -> HFONT {
     unsafe { CreateFontW(-size, 0, 0, 0, weight, 0, 0, 0, 1, 0, 0, 5, 0, name) }
 }
 
-pub fn run(pkg: Package, log: Log) -> io::Result<()> {
+pub fn run(pkg: Package, log: Log, dev_lab: bool) -> io::Result<()> {
     let title = format!("AINDA VIVO | Preparação v{}", pkg.version);
     let mut ui = Ui {
         pkg,
         log,
+        dev_lab,
         controls: None,
         state: Readiness::Blocked,
         worker: None,
@@ -346,7 +355,7 @@ pub fn run(pkg: Package, log: Log) -> io::Result<()> {
         let play = control(
             hwnd,
             w!("BUTTON"),
-            "JOGAR",
+            if dev_lab { "ABRIR DEV LAB" } else { "JOGAR" },
             WS_TABSTOP | BS_OWNERDRAW as u32,
             ID_PLAY,
             [34, 302, 172, 36],

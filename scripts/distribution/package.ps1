@@ -5,12 +5,16 @@ param(
     [Parameter(Mandatory)] [string]$OutputDirectory,
     [Parameter(Mandatory,ParameterSetName='History')] [string]$OriginalDirectory,
     [Parameter(Mandatory,ParameterSetName='Build')] [string]$GameExe,
-    [Parameter(Mandatory,ParameterSetName='Build')] [ValidatePattern('^\d+\.\d+\.\d+$')] [string]$Version,
+    [Parameter(Mandatory,ParameterSetName='Build')] [ValidatePattern('^[0-9]+\.[0-9]+\.[0-9]+(?:-dev\.[0-9]+)?$')] [ValidateLength(1,24)] [string]$Version,
     [Parameter(ParameterSetName='Build')] [string]$AssetsDirectory,
+    [Parameter(ParameterSetName='Build')] [switch]$DevLabShortcuts,
     [string]$LicensedRuntimeInstaller
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
+if ($DevLabShortcuts -and $Version -notmatch '-dev\.[0-9]+$') {
+    throw 'Os atalhos do Dev Lab exigem uma versão experimental -dev.N.'
+}
 Add-Type -AssemblyName System.IO.Compression
 Add-Type -AssemblyName System.IO.Compression.FileSystem
 $launcherPath = (Resolve-Path -LiteralPath $Launcher).ProviderPath
@@ -77,6 +81,18 @@ function Add-PortablePackage([string]$ReleaseVersion, [string]$GamePath, [string
                 [void][IO.Compression.ZipFileExtensions]::CreateEntryFromFile($zip, $item.FullName, ('game/assets/' + $relative), $mode)
             }
         }
+        if ($DevLabShortcuts) {
+            Add-ZipText $zip 'JOGAR.cmd' ('@echo off' + "`r`n" + 'start "" "%~dp0AINDA-VIVO.exe"' + "`r`n")
+            Add-ZipText $zip 'ABRIR DEV LAB.cmd' ('@echo off' + "`r`n" + 'start "" "%~dp0AINDA-VIVO.exe" --dev-lab' + "`r`n")
+        }
+        $labInfo = if ($DevLabShortcuts) {
+@"
+
+Use JOGAR.cmd para a campanha com a Presença física. Para testar as
+estratégias, abra ABRIR DEV LAB.cmd, clique em ABRIR DEV LAB e use Ctrl+I.
+F5 alterna a Presença 3D e a silhueta quando o laboratório está habilitado.
+"@
+        } else { '' }
         $notice = @"
 AINDA VIVO v$ReleaseVersion
 Windows 10/11 x64 • Pré-lançamento experimental
@@ -89,6 +105,7 @@ Windows 10/11 x64 • Pré-lançamento experimental
 É necessário um driver de vídeo com Vulkan ou Direct3D 12 compatível.
 Se houver um erro, use DIAGNÓSTICO no inicializador. Registros em
 %LOCALAPPDATA%\AindaVivo\launcher\$ReleaseVersion.
+$labInfo
 
 SHA-256 do executável original: $gameHash
 "@

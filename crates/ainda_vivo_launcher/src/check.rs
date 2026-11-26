@@ -39,12 +39,7 @@ impl Package {
             "Extraia todo o ZIP. O arquivo game/version.txt está ausente.".to_owned()
         })?;
         let version = manifest.trim();
-        if version.len() > 24
-            || version.split('.').count() != 3
-            || version
-                .split('.')
-                .any(|part| part.is_empty() || !part.bytes().all(|b| b.is_ascii_digit()))
-        {
+        if !valid_version(version) {
             return Err("O arquivo game/version.txt contém uma versão inválida.".to_owned());
         }
         Ok(Self {
@@ -58,6 +53,17 @@ impl Package {
     pub fn installer_is_local(&self) -> bool {
         self.installer.is_file()
     }
+}
+
+fn valid_version(version: &str) -> bool {
+    let numeric = |part: &str| !part.is_empty() && part.bytes().all(|b| b.is_ascii_digit());
+    let (core, stage) = version
+        .split_once("-dev.")
+        .map_or((version, None), |(core, stage)| (core, Some(stage)));
+    version.len() <= 24
+        && core.split('.').count() == 3
+        && core.split('.').all(numeric)
+        && stage.is_none_or(numeric)
 }
 
 #[derive(Clone)]
@@ -96,9 +102,13 @@ impl Log {
         }
     }
 
-    pub fn launch(&self, package: &Package) -> io::Result<Child> {
+    pub fn launch(&self, package: &Package, dev_lab: bool) -> io::Result<Child> {
         let file = File::create(&self.game)?;
-        let child = Command::new(&package.binary)
+        let mut command = Command::new(&package.binary);
+        if dev_lab {
+            command.arg("--dev-lab");
+        }
+        let child = command
             .current_dir(&package.folder)
             .stdout(file.try_clone()?)
             .stderr(file)
@@ -387,6 +397,21 @@ pub fn install_runtime(package: &Package, log: &Log) -> Result<(), String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn versions_allow_numbered_experiments_and_safe_log_paths() {
+        assert!(valid_version("0.0.12"));
+        assert!(valid_version("0.0.12-dev.7"));
+        for version in [
+            "../0.0.12",
+            "0.0.12-dev.",
+            "0.0.12-dev.7/../../",
+            "0.0.12-rc.1",
+            "0.0",
+        ] {
+            assert!(!valid_version(version), "{version}");
+        }
+    }
 
     #[test]
     fn only_missing_msvc_dlls_offer_the_microsoft_installer() {
