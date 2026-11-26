@@ -3,8 +3,8 @@ use super::{
     library::{self, Catalog},
     motion::{self, Mode},
     observer::{
-        BotStyle, Command as AI, HuntCommand as Hunt, HuntKnob, Knob as AiKnob, State as AiState,
-        hunt::Contact,
+        BotStyle, Command as AI, HuntCommand as Hunt, HuntKnob, HuntProfile, Knob as AiKnob,
+        State as AiState, hunt::Contact, strategy::Kind,
     },
     settings::{Category, Config, Lighting, MAX_INSTANCES, Model, Preset, Tab},
     sound_lab::Command as Sound,
@@ -355,6 +355,15 @@ fn inspector(side: &mut ChildSpawnerCommands) {
                 button(line, "Rodar matriz", Action::Observer(AI::Matrix));
                 button(line, "Exportar diagnóstico", Action::Observer(AI::Export));
             });
+            section(view, "GUERRA PSICOLÓGICA");
+            row(view).with_children(|line| {
+                button(line, "Planejar", Action::Observer(AI::Strategic));
+                button(line, "Diretor de ensaio", Action::Observer(AI::StrategyDirector));
+                button(line, "Reação simulada", Action::Observer(AI::Reaction));
+            });
+            for kind in Kind::ALL {
+                button(view, kind.label(), Action::Observer(AI::Force(kind)));
+            }
             view.spawn((text("", 12.0, ACCENT), Label::Observer));
             section(view, "PARÂMETROS");
             for (knob, name, delta) in AiKnob::ALL {
@@ -371,6 +380,11 @@ fn inspector(side: &mut ChildSpawnerCommands) {
             }
         });
         group(list, Tab::Hunt).with_children(|view| {
+            row(view).with_children(|line| {
+                for (name, profile) in [("Base", HuntProfile::Base), ("Moderada", HuntProfile::Moderate), ("Intensa", HuntProfile::Intense)] {
+                    button(line, name, Action::Hunt(Hunt::Profile(profile)));
+                }
+            });
             row(view).with_children(|line| {
                 button(line,"Caçada livre",Action::Hunt(Hunt::Start));
                 button(line,"Ameaça",Action::Hunt(Hunt::Bluff));
@@ -844,6 +858,9 @@ pub(super) fn refresh(
             Action::Observer(AI::Automatic) => active.observer.automatic,
             Action::Observer(AI::Guides) => active.observer.guides,
             Action::Observer(AI::Obstacle) => active.observer.obstacle,
+            Action::Observer(AI::Strategic) => active.observer.strategic_enabled(),
+            Action::Observer(AI::StrategyDirector) => !active.observer.block_director,
+            Action::Hunt(Hunt::Profile(profile)) => active.observer.hunt.tuning == profile.tuning(),
             Action::Hunt(Hunt::Result(result)) => active.observer.hunt.selected == result,
             Action::Hunt(Hunt::Psychology) => active.observer.hunt.psychological,
             Action::Sound(Sound::Reverb) => active.sound.reverb,

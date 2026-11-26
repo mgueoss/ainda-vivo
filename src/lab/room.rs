@@ -20,7 +20,7 @@ use bevy::{
     prelude::*,
 };
 
-pub(super) const LAYER: usize = 6;
+pub(crate) const LAYER: usize = 6;
 pub(super) const FLOOR: f32 = 0.025;
 
 #[derive(Component)]
@@ -44,7 +44,7 @@ pub(super) enum Guide {
     Track,
 }
 
-pub(super) struct Room {
+pub(crate) struct Room {
     pub camera: Entity,
     pub seat: Entity,
     pub solids: Vec<Aabb>,
@@ -336,12 +336,12 @@ fn detail_mesh(
     ));
 }
 
-pub(super) fn line_mesh(lines: Vec<[f32; 3]>) -> Mesh {
+pub(crate) fn line_mesh(lines: Vec<[f32; 3]>) -> Mesh {
     Mesh::new(PrimitiveTopology::LineList, RenderAssetUsages::default())
         .with_inserted_attribute(Mesh::ATTRIBUTE_POSITION, lines)
 }
 
-pub(super) fn material(
+pub(crate) fn material(
     assets: &mut Assets<StandardMaterial>,
     base_color: Color,
 ) -> Handle<StandardMaterial> {

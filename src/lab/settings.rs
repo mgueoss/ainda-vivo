@@ -5,7 +5,7 @@ use std::path::Path;
 pub(super) const MAX_INSTANCES: usize = 12;
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) enum Model {
+pub(crate) enum Model {
     #[default]
     Presence,
     Legacy,
@@ -16,7 +16,7 @@ pub(super) enum Model {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Default, Serialize, Deserialize)]
-pub(super) enum Category {
+pub(crate) enum Category {
     #[default]
     All,
     Characters,
@@ -87,7 +87,7 @@ fn fold(text: &str) -> String {
 }
 
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) enum Surface {
+pub(crate) enum Surface {
     #[default]
     Original,
     Clay,
@@ -113,7 +113,7 @@ impl Surface {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub(super) struct ModelSpec {
+pub(crate) struct ModelSpec {
     pub model: Model,
     pub position: [f32; 3],
     pub angles: [f32; 3],
@@ -173,7 +173,7 @@ impl ModelSpec {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) enum Preset {
+pub(crate) enum Preset {
     #[default]
     Studio,
     Station,
@@ -208,7 +208,7 @@ impl Preset {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub(super) struct Lighting {
+pub(crate) struct Lighting {
     pub preset: Preset,
     pub key: f32,
     pub fill: f32,
@@ -264,7 +264,7 @@ impl Lighting {
 }
 
 #[derive(Clone, Copy, Debug, Default, PartialEq, Eq, Serialize, Deserialize)]
-pub(super) enum Tab {
+pub(crate) enum Tab {
     #[default]
     Object,
     Lighting,
@@ -277,7 +277,7 @@ pub(super) enum Tab {
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub(super) struct Lens {
+pub(crate) struct Lens {
     pub position: [f32; 3],
     pub yaw: f32,
     pub pitch: f32,
@@ -301,7 +301,7 @@ impl Default for Lens {
 
 #[derive(Resource, Clone, Debug, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
-pub(super) struct Config {
+pub(crate) struct Config {
     pub lighting: Lighting,
     pub lens: Lens,
     pub instances: Vec<ModelSpec>,

@@ -1,15 +1,19 @@
 use super::{
-    Brain, Footstep, Frame, HUMAN, Nav, Noise, Portal, Pose, State, Tuning, View, Zone, forward,
-    point, presentation,
+    Brain, Campaign, Footstep, Frame, HUMAN, Nav, Noise, Portal, Pose, State, Tuning, View, Zone,
+    forward, point, presentation,
 };
 use super::{
     hunt,
     hunt_lab::{HuntCommand, HuntLab, hunt_command},
     scenario::{self, Bot, BotStyle},
+    strategy::{Delivery, Illusion, Kind},
 };
 use crate::{
     app::Session,
-    atmosphere::director::Director,
+    atmosphere::{
+        director::Director,
+        sound::presence_audio::{Category, Family, Request},
+    },
     lab::{
         Active, Lab, Options,
         library::Catalog,
@@ -92,8 +96,21 @@ pub enum Command {
     Obstacle,
     Bot(BotStyle),
     StopBot,
+    Strategic,
+    Force(Kind),
+    StrategyDirector,
+    Reaction,
     Matrix,
     Export,
+}
+
+#[derive(Default, Clone, Copy, Debug)]
+enum Reaction {
+    #[default]
+    Live,
+    Toward,
+    Ignore,
+    Away,
 }
 
 #[derive(Default)]
@@ -109,8 +126,8 @@ pub struct TestLab {
     pub hunt: HuntLab,
     pub(super) seed: Option<u32>,
     pub(super) bot: Option<Bot>,
-    pub(in crate::lab) obstacle: bool,
-    pub(in crate::lab) result: Option<String>,
+    pub(crate) obstacle: bool,
+    pub(crate) result: Option<String>,
     stage: Option<Stage>,
     nav: Option<Nav>,
     pulse: Option<Noise>,
@@ -119,6 +136,9 @@ pub struct TestLab {
     single_step: bool,
     export: bool,
     report: String,
+    pub(crate) block_director: bool,
+    reaction: Reaction,
+    simulated: Option<(Vec2, Vec2)>,
 }
 
 struct Stage {
@@ -145,15 +165,18 @@ fn reset_brain(brain: &mut Brain, seed: Option<u32>) {
 }
 
 impl TestLab {
-    pub(in crate::lab) fn with_seed(seed: Option<u32>) -> Self {
+    pub(crate) fn strategic_enabled(&self) -> bool {
+        self.brain.mind.enabled
+    }
+    pub(crate) fn with_seed(seed: Option<u32>) -> Self {
         Self { seed, ..default() }
     }
 
-    pub(in crate::lab) fn bot_running(&self) -> bool {
+    pub(crate) fn bot_running(&self) -> bool {
         self.bot.is_some()
     }
 
-    pub(in crate::lab) fn remove_obstacle(&mut self, solids: &mut Vec<Aabb>) {
+    pub(crate) fn remove_obstacle(&mut self, solids: &mut Vec<Aabb>) {
         if self.obstacle {
             remove_obstacle(solids);
             self.obstacle = false;
@@ -223,11 +246,24 @@ impl TestLab {
             self.result
                 .as_ref()
                 .map_or(String::new(), |report| format!("\n\n{report}"))
+                + &format!(
+                    "\n\nReação {:?} · diretor {}\n{}",
+                    self.reaction,
+                    if self.block_director {
+                        "inativo"
+                    } else {
+                        "local"
+                    },
+                    self.brain.mind.report(b.clock)
+                )
         )
     }
 }
 
 pub fn command(active: &mut Active, config: &mut Config, action: Command) {
+    if matches!(action, Command::Strategic | Command::Force(_)) && !active.observer.enabled {
+        command(active, config, Command::Enable);
+    }
     let action = match (action, &active.observer.bot) {
         (Command::Replay, Some(bot)) => Command::Bot(bot.style),
         _ => action,
@@ -247,7 +283,7 @@ pub fn command(active: &mut Active, config: &mut Config, action: Command) {
         config.lens.yaw = 0.0;
         config.lens.pitch = -0.045;
         active.reset_view(&config.lens);
-        active.playback.cancel_run();
+        active.cancel_demonstration();
     }
     let lab = &mut active.observer;
     match action {
@@ -265,7 +301,10 @@ pub fn command(active: &mut Active, config: &mut Config, action: Command) {
         }
         Command::Pause => lab.paused = !lab.paused,
         Command::Reset | Command::Replay => {
+            let strategic = lab.brain.mind.enabled;
             reset_brain(&mut lab.brain, lab.seed);
+            lab.brain.mind.enabled = strategic;
+            lab.simulated = None;
             lab.footstep = Footstep::default();
             lab.pulse = None;
             lab.paused = false;
@@ -283,6 +322,28 @@ pub fn command(active: &mut Active, config: &mut Config, action: Command) {
             lab.single_step = true;
         }
         Command::ClearMemory => lab.brain.forget(),
+        Command::Strategic => {
+            let was = lab.brain.mind.enabled;
+            lab.brain.mind.clear();
+            lab.brain.mind.enabled = !was;
+            lab.automatic = true;
+        }
+        Command::Force(kind) => {
+            lab.brain.mind.force(kind);
+            lab.brain.hunt.stop(hunt::End::Interrupted);
+            lab.automatic = true;
+            lab.paused = false;
+        }
+        Command::StrategyDirector => lab.block_director = !lab.block_director,
+        Command::Reaction => {
+            lab.reaction = match lab.reaction {
+                Reaction::Live => Reaction::Toward,
+                Reaction::Toward => Reaction::Ignore,
+                Reaction::Ignore => Reaction::Away,
+                Reaction::Away => Reaction::Live,
+            };
+            lab.simulated = None;
+        }
         Command::StopBot => lab.bot = None,
         Command::Bot(_) => unreachable!("início do bot já processado"),
         Command::Matrix => {
@@ -507,16 +568,11 @@ fn lab_nav(solids: &[Aabb]) -> Nav {
 pub fn update_lab(
     mut commands: Commands,
     mut lab: ResMut<Lab>,
-    config: Res<Config>,
-    (catalog, options, director, campaign): (
-        Res<Catalog>,
-        Res<Options>,
-        Res<Director>,
-        Res<Session>,
-    ),
+    (config, catalog, options): (Res<Config>, Res<Catalog>, Res<Options>),
+    (director, campaign, actor_campaign): (Res<Director>, Res<Session>, Res<Campaign>),
     time: Res<Time>,
     (mut meshes, mut materials): (ResMut<Assets<Mesh>>, ResMut<Assets<StandardMaterial>>),
-    mut signals: MessageWriter<hunt::Signal>,
+    (mut signals, mut audio): (MessageWriter<hunt::Signal>, MessageWriter<Request>),
 ) {
     let Some(active) = &mut lab.active else {
         return;
@@ -552,6 +608,13 @@ pub fn update_lab(
         time.delta_secs()
     };
     if !lab.paused || stepped {
+        if let Some((position, target)) = &mut lab.simulated {
+            let next = *position + (*target - *position).clamp_length_max(dt * 2.25);
+            if nav.clear_body(*position, next, Vec3::new(0.28, 0.9, 0.28), lab.closed) {
+                *position = next;
+            }
+            view.eye = point(*position).with_y(1.62);
+        }
         if let Some(bot) = &mut lab.bot {
             bot.tick(
                 dt,
@@ -587,6 +650,43 @@ pub fn update_lab(
             lab.brain.spawn(HOME, 0.);
         }
         lab.brain.step(dt, &frame, lab.tuning, lab.automatic);
+        if let Some(order) = lab.brain.mind.request() {
+            let source = (!lab.block_director)
+                .then(|| nav.sector(view.eye.xz()))
+                .flatten()
+                .and_then(|sector| {
+                    nav.exits(sector, lab.closed)
+                        .find(|(s, _)| *s == order.sector)
+                })
+                .map(|(_, at)| at);
+            if let Some(source) = source {
+                let family = match order.kind {
+                    Illusion::Diversion => Family::Walk,
+                    Illusion::Rush => Family::Launch,
+                };
+                let mut request =
+                    Request::new(family, Category::Illusion, point(source).with_y(0.2), true);
+                request.gain = order.intensity;
+                audio.write(request);
+                let here = view.eye.xz();
+                let toward = (source - here).normalize_or_zero();
+                lab.simulated = match lab.reaction {
+                    Reaction::Live => None,
+                    Reaction::Toward => Some((here, source)),
+                    Reaction::Ignore => Some((here, here)),
+                    Reaction::Away => Some((here, here - toward * 5.0)),
+                };
+            }
+            lab.brain.mind.feedback(
+                order.id,
+                if source.is_some() {
+                    Delivery::Played
+                } else {
+                    Delivery::Rejected
+                },
+                lab.brain.clock,
+            );
+        }
         if let Some(cue) = lab.brain.hunt.cue.take() {
             signals.write(hunt::Signal {
                 cue,
@@ -604,11 +704,12 @@ pub fn update_lab(
     lab.hunt.distance = lab.brain.pos.distance(view.eye.xz());
     if std::mem::take(&mut lab.export) {
         let report = format!(
-            "AINDA VIVO v{}\n{}\n\n{}\n\n{}",
+            "AINDA VIVO v{}\n{}\n\n{}\n\n{}\n\nCampanha pausada\n{}",
             crate::app::VERSION,
             director.acoustic_status(campaign.elapsed),
             lab.diagnostics(),
-            lab.report
+            lab.report,
+            actor_campaign.report(),
         );
         let result = options
             .captures

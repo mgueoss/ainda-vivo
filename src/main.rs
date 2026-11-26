@@ -8,6 +8,7 @@ mod interaction;
 #[cfg(feature = "dev-lab")]
 mod lab;
 mod preferences;
+mod presence;
 mod psychology;
 mod reality;
 mod scene;

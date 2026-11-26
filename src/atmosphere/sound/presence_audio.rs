@@ -4,18 +4,18 @@ use super::{
     presence_bank::{Bank, Surface, VARIANTS, next},
     spatial::{MixTarget, RATE, Voice, channels},
 };
+#[cfg(feature = "dev-lab")]
+use crate::lab::{Lab, LabCamera};
 use crate::{
     app::{CollisionWorld, Comfort, MainCamera, Screen, Session},
     atmosphere::{
         Atmosphere,
         director::{Cue as Beat, Director, Mood},
     },
-    lab::{
-        Lab, LabCamera,
-        observer::{
-            Campaign,
-            hunt::{Cue, Signal},
-        },
+    presence::observer::{
+        Campaign, PerceptionOrder, PerceptionReceipt,
+        hunt::{Cue, Signal},
+        strategy::{Delivery, Illusion},
     },
     scene::{
         presence::Presence,
@@ -36,14 +36,16 @@ impl Plugin for PresenceAudio {
     fn build(&self, app: &mut App) {
         app.init_resource::<Bank>()
             .add_message::<Signal>()
-            .add_message::<crate::lab::observer::RelayClick>()
+            .add_message::<crate::presence::observer::RelayClick>()
             .add_message::<Request>()
+            .add_message::<PerceptionOrder>()
+            .add_message::<PerceptionReceipt>()
             .add_systems(
                 Update,
                 drive_illusions
                     .after(super::emit)
                     .before(super::emit_incidents)
-                    .run_if(crate::lab::campaign_running),
+                    .run_if(crate::app::campaign_running),
             )
             .add_systems(Update, (physical, mix_presence).chain().after(super::mix));
     }
@@ -56,6 +58,7 @@ pub enum Category {
     FalseReality,
 }
 
+#[cfg(feature = "dev-lab")]
 impl Category {
     pub const ALL: [Self; 3] = [Self::Physical, Self::Illusion, Self::FalseReality];
     pub fn label(self) -> &'static str {
@@ -100,7 +103,7 @@ fn physical(
     mut signals: MessageReader<Signal>,
     mut feed: MessageWriter<Request>,
     mut rng: Local<u32>,
-    lab: Option<Res<Lab>>,
+    #[cfg(feature = "dev-lab")] lab: Option<Res<Lab>>,
 ) {
     for signal in signals.read() {
         let family = match signal.cue {
@@ -126,6 +129,7 @@ fn physical(
         let mut request = Request::new(family, Category::Physical, signal.at, signal.lab);
         request.pitch = 0.94 + 0.12 * next(&mut rng);
         request.gain = if signal.cue == Cue::Ready { 0.67 } else { 1.0 };
+        #[cfg(feature = "dev-lab")]
         if signal.lab
             && let Some(lab) = &lab
         {
@@ -223,8 +227,10 @@ fn blocked(
 #[derive(bevy::ecs::system::SystemParam)]
 struct Space<'w, 's> {
     world: Res<'w, CollisionWorld>,
+    #[cfg(feature = "dev-lab")]
     lab: Option<Res<'w, Lab>>,
     game: Query<'w, 's, &'static Transform, With<MainCamera>>,
+    #[cfg(feature = "dev-lab")]
     camera: Query<'w, 's, &'static Transform, With<LabCamera>>,
 }
 
@@ -249,13 +255,22 @@ fn mix_presence(
     )>,
     mut seed: Local<u32>,
 ) {
+    #[cfg(feature = "dev-lab")]
     let room = space.lab.as_ref().and_then(|lab| lab.audio_geometry());
+    #[cfg(not(feature = "dev-lab"))]
+    let room: Option<(
+        &[ainda_vivo_core::collision::Aabb],
+        Option<ainda_vivo_core::collision::Aabb>,
+    )> = None;
     let lab_open = room.is_some();
+    #[cfg(feature = "dev-lab")]
     let listener = if lab_open {
         space.camera.single()
     } else {
         space.game.single()
     };
+    #[cfg(not(feature = "dev-lab"))]
+    let listener = space.game.single();
     let Ok(listener) = listener else {
         requests.clear();
         return;
@@ -340,6 +355,10 @@ fn mix_presence(
         source.target.set(l, r, source.muffle);
     }
     for request in pending.into_iter().flatten() {
+        debug!(
+            "Som da Presença: {:?} em {:?}",
+            request.category, request.at
+        );
         let variant = request
             .variant
             .unwrap_or_else(|| (next(&mut seed) * VARIANTS as f32) as usize);
@@ -432,6 +451,7 @@ pub enum Pattern {
     Rush,
     Far,
 }
+#[cfg(feature = "dev-lab")]
 impl Pattern {
     pub fn label(self) -> &'static str {
         match self {
@@ -564,6 +584,9 @@ struct Schedule {
     last_source: Option<u8>,
     rng: u32,
     charged: bool,
+    waiting: Option<PerceptionOrder>,
+    strategic: Option<(PerceptionOrder, bool)>,
+    strategic_after: f32,
 }
 
 struct Source {
@@ -577,7 +600,7 @@ fn candidate(
     closed: bool,
     view: Transform,
     order: usize,
-    (physical, previous): (Option<u8>, Option<u8>),
+    (physical, previous, wanted): (Option<u8>, Option<u8>, Option<u8>),
     recent: &[Option<u8>],
 ) -> Option<Source> {
     let here = station::sector_id(view.translation)?;
@@ -592,7 +615,10 @@ fn candidate(
                 return None;
             };
             let sector = side as u8;
-            if physical == Some(sector) {
+            if physical == Some(sector)
+                || wanted.is_some_and(|expected| expected != sector)
+                || closed && side == Sector::Exit
+            {
                 return None;
             }
             let room = get(side);
@@ -657,9 +683,13 @@ fn drive_illusions(
         Res<crate::app::LocalPlayer>,
         Query<&Transform, With<MainCamera>>,
     ),
-    mut requests: MessageWriter<Request>,
+    (mut requests, mut orders, mut receipts): (
+        MessageWriter<Request>,
+        MessageReader<PerceptionOrder>,
+        MessageWriter<PerceptionReceipt>,
+    ),
 ) {
-    if smoke.enabled && !smoke.sound {
+    if smoke.enabled && !smoke.sound && !smoke.campaign {
         return;
     }
     let stamp = (session.attempt, session.perception_revision);
@@ -667,6 +697,7 @@ fn drive_illusions(
         *state = Schedule {
             stamp,
             after: session.elapsed + 39.0,
+            strategic_after: session.elapsed + 18.0,
             rng: director.initial_seed() ^ 0x819ec2ad,
             ..default()
         };
@@ -675,6 +706,36 @@ fn drive_illusions(
         return;
     }
     let now = session.elapsed;
+    let respond =
+        |receipts: &mut MessageWriter<PerceptionReceipt>, req: PerceptionOrder, delivery| {
+            receipts.write(PerceptionReceipt {
+                stamp: req.stamp,
+                id: req.id,
+                delivery,
+            });
+        };
+    let supported = |request| {
+        physical
+            .as_ref()
+            .is_some_and(|actor| actor.supports(request))
+    };
+    for &request in orders.read().filter(|request| request.stamp == stamp) {
+        if !supported(request)
+            || state.waiting.is_some()
+            || state.current.is_some()
+            || now < state.strategic_after
+        {
+            respond(&mut receipts, request, Delivery::Rejected);
+        } else {
+            state.waiting = Some(request);
+        }
+    }
+    if let Some(request) = state.waiting
+        && (now >= request.deadline || !supported(request))
+    {
+        state.waiting = None;
+        respond(&mut receipts, request, Delivery::Rejected);
+    }
     let active_actor = physical.as_ref().is_some_and(|p| p.active());
     let here = station::sector_id(player.body.feet);
     let passive_actor = physical
@@ -682,13 +743,13 @@ fn drive_illusions(
         .and_then(|p| p.quiet_sector())
         .filter(|&at| here != Some(at));
     let reserved = active_actor
+        && state.strategic.is_none()
         && (passive_actor.is_none()
             || state
                 .current
                 .as_ref()
                 .is_some_and(|chain| chain.actor_sector != passive_actor));
-    if reserved
-        || session.collapse_active()
+    let hard_block = session.collapse_active()
         || session.resting
         || session.wake_confirmation
         || session.message_left > 1.0
@@ -701,16 +762,98 @@ fn drive_illusions(
         || comfort.psycho_av < 0.10
         || station::lamp_refuge(session.memory().desk_light, player.body.feet)
         || session.psychology.value() >= 75.0
-    {
+        || physical
+            .as_ref()
+            .is_some_and(|actor| actor.hunt_intensity() > 0);
+    let strategy_end = state.strategic.is_some_and(|(order, _)| !supported(order));
+    if hard_block || strategy_end || reserved && state.waiting.is_none() {
         if state.current.take().is_some() {
             director.settle_acoustic(now, "interrompida por outra situação", 7.0);
+        }
+        if let Some((request, played)) = state.strategic.take()
+            && !played
+        {
+            respond(&mut receipts, request, Delivery::Interrupted);
+        }
+        if hard_block && let Some(request) = state.waiting.take() {
+            respond(&mut receipts, request, Delivery::Rejected);
         }
         return;
     }
     let Ok(view) = camera.single() else { return };
     let speed = player.body.velocity.xz().length();
     let closed = !session.progress().exit_unlocked();
-    if state.current.is_none() && now >= state.after && now >= state.sample {
+    if let Some(request) = state.waiting
+        && now >= request.earliest
+        && now >= state.sample
+    {
+        state.sample = now + 0.24;
+        let physical_sector = Some(request.actor_sector);
+        if director.strategic_acoustic_available(now)
+            && let Some(source) = candidate(
+                &world,
+                closed,
+                *view,
+                director.order,
+                (physical_sector, state.last_source, Some(request.sector)),
+                session.memory().recent_route(),
+            )
+        {
+            let category = if session.expedition.observer().reality()
+                == ainda_vivo_core::reality::Reality::False
+            {
+                Category::FalseReality
+            } else {
+                Category::Illusion
+            };
+            let pattern = match request.kind {
+                Illusion::Diversion => {
+                    if source.covered {
+                        Pattern::Breath
+                    } else {
+                        Pattern::Trail
+                    }
+                }
+                Illusion::Rush => Pattern::Rush,
+            };
+            let chain = Chain::new(Start {
+                pattern,
+                category,
+                path: source.path,
+                source_sector: source.sector,
+                actor_sector: physical_sector,
+                seed: state.rng ^ request.id,
+            });
+            director.begin_acoustic(
+                now,
+                if request.kind == Illusion::Rush {
+                    "Simular ameaça"
+                } else {
+                    "Desviar atenção"
+                },
+            );
+            state.waiting = None;
+            state.current = Some(chain);
+            state.strategic = Some((request, false));
+            state.last_source = Some(source.sector);
+            state.strategic_after = now + 29.0;
+            state.after = state.after.max(now + 25.0);
+            state.charged = false;
+            respond(&mut receipts, request, Delivery::Reserved);
+            if physical.as_ref().is_some_and(|actor| actor.trace_enabled()) {
+                info!(
+                    "ILUSÃO {now:.2}s reservada id={} {:?} setor={} ator={}",
+                    request.id, request.kind, source.sector, request.actor_sector
+                );
+            }
+        }
+    }
+    if !reserved
+        && state.waiting.is_none()
+        && state.current.is_none()
+        && now >= state.after
+        && now >= state.sample
+    {
         state.sample = now + 1.35;
         if director.acoustic_available(now, passive_actor.is_some())
             && let Some(source) = candidate(
@@ -718,7 +861,7 @@ fn drive_illusions(
                 closed,
                 *view,
                 director.order,
-                (passive_actor, state.last_source),
+                (passive_actor, state.last_source, None),
                 session.memory().recent_route(),
             )
         {
@@ -756,6 +899,7 @@ fn drive_illusions(
             state.current = Some(chain);
             state.last_source = Some(source.sector);
             state.after = now + 84.0 + next(&mut state.rng) * 55.0;
+            state.strategic_after = state.strategic_after.max(now + 20.0);
             state.charged = false;
         }
     }
@@ -782,6 +926,11 @@ fn drive_illusions(
             let understood = chain.reaction;
             let plausible = chain.audible;
             state.current = None;
+            if let Some((request, played)) = state.strategic.take()
+                && !played
+            {
+                respond(&mut receipts, request, Delivery::Interrupted);
+            }
             state.preferences.observe(pattern, plausible, understood);
             director.settle_acoustic(
                 now,
@@ -797,7 +946,20 @@ fn drive_illusions(
                 director.request(Beat::Illusion);
             }
         }
-        if let Some(sound) = pulse {
+        if let Some(mut sound) = pulse {
+            if let Some((request, played)) = &mut state.strategic {
+                sound.gain *= request.intensity;
+                if !*played {
+                    *played = true;
+                    respond(&mut receipts, *request, Delivery::Played);
+                    if physical.as_ref().is_some_and(|actor| actor.trace_enabled()) {
+                        info!(
+                            "ILUSÃO {now:.2}s emitida id={} setor={}",
+                            request.id, request.sector
+                        );
+                    }
+                }
+            }
             if !state.charged
                 && matches!(pattern, Pattern::Rush | Pattern::Knock)
                 && sound.at.distance(view.translation) < 9.5
@@ -822,8 +984,16 @@ mod tests {
         let world = CollisionWorld(Vec::new());
         let view = Transform::from_xyz(0.0, 1.62, -6.0)
             .with_rotation(Quat::from_rotation_y(std::f32::consts::PI));
-        let baseline = candidate(&world, true, view, 0, (None, None), &[]).unwrap();
-        let other = candidate(&world, true, view, 0, (Some(baseline.sector), None), &[]).unwrap();
+        let baseline = candidate(&world, true, view, 0, (None, None, None), &[]).unwrap();
+        let other = candidate(
+            &world,
+            true,
+            view,
+            0,
+            (Some(baseline.sector), None, None),
+            &[],
+        )
+        .unwrap();
         assert_ne!(other.sector, baseline.sector);
         assert_eq!(station::sector_id(other.path[0]), Some(other.sector));
     }

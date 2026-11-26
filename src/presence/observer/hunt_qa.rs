@@ -5,7 +5,8 @@ use super::{
 };
 use crate::{
     app::{Comfort, LocalPlayer, Screen, Session, VERSION, awaken, restart},
-    lab::{Action, Lab, Options, library::Catalog, observer::Command},
+    lab::{Action, Lab, Options, library::Catalog},
+    presence::observer::Command,
 };
 use ainda_vivo_core::{
     reality::Reality,
@@ -19,7 +20,7 @@ use bevy::{
 use std::path::PathBuf;
 
 #[derive(Resource)]
-pub(in crate::lab) struct Check {
+pub(crate) struct Check {
     frames: u32,
     ticks: u32,
     report: Option<PathBuf>,
@@ -65,7 +66,7 @@ impl Check {
     }
 }
 
-pub(in crate::lab) fn keys(check: Option<Res<Check>>, mut keys: ResMut<ButtonInput<KeyCode>>) {
+pub(crate) fn keys(check: Option<Res<Check>>, mut keys: ResMut<ButtonInput<KeyCode>>) {
     if let Some(check) = check {
         if matches!(check.frames, 518 | 2042) {
             keys.press(KeyCode::ControlLeft);
@@ -88,7 +89,7 @@ fn capture(options: &Options, commands: &mut Commands, name: &str) {
 }
 
 #[derive(bevy::ecs::system::SystemParam)]
-pub(in crate::lab) struct Scene<'w, 's> {
+pub(crate) struct Scene<'w, 's> {
     session: ResMut<'w, Session>,
     player: ResMut<'w, LocalPlayer>,
     comfort: ResMut<'w, Comfort>,
@@ -96,7 +97,7 @@ pub(in crate::lab) struct Scene<'w, 's> {
     signals: MessageReader<'w, 's, Signal>,
 }
 
-pub(in crate::lab) fn verify(
+pub(crate) fn verify(
     check: ResMut<Check>,
     options: Res<Options>,
     catalog: Res<Catalog>,

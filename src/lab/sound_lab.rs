@@ -16,7 +16,7 @@ pub(super) type CampaignSinks<'w, 's> =
     Query<'w, 's, (Entity, &'static AudioSink), (Added<AudioSink>, Without<PresenceEmitter>)>;
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Command {
+pub(crate) enum Command {
     Play,
     Family(Family),
     Variation,

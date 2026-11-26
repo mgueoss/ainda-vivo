@@ -41,6 +41,7 @@ pub(super) enum Knowledge {
 }
 
 impl Knowledge {
+    #[cfg(feature = "dev-lab")]
     pub(super) fn label(self) -> &'static str {
         match self {
             Self::Confirmed => "confirmado pela visão",

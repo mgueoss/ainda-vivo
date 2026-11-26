@@ -3,7 +3,10 @@ use bevy::{
     diagnostic::{DiagnosticsStore, FrameTimeDiagnosticsPlugin},
     prelude::*,
 };
-use std::io::Write;
+use std::{io::Write, path::Path};
+
+const SESSION_FILES: usize = 8;
+const SESSION_ROWS: usize = 180_000;
 
 #[derive(Resource, Default)]
 pub struct Performance {
@@ -11,6 +14,35 @@ pub struct Performance {
     since: f32,
     initialized: bool,
     log: Option<std::io::BufWriter<std::fs::File>>,
+    rows: usize,
+}
+
+fn retain_sessions(directory: &Path, current: u128) {
+    let Ok(files) = std::fs::read_dir(directory) else {
+        return;
+    };
+    let mut previous = files
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            if !entry.file_type().ok()?.is_file() {
+                return None;
+            }
+            let path = entry.path();
+            if path.extension()?.to_str()? != "csv" {
+                return None;
+            }
+            let name = path.file_stem()?.to_str()?;
+            if !(18..=20).contains(&name.len()) {
+                return None;
+            }
+            let stamp = name.parse::<u128>().ok()?;
+            (stamp < current).then_some((stamp, path))
+        })
+        .collect::<Vec<_>>();
+    previous.sort_unstable_by_key(|(stamp, _)| std::cmp::Reverse(*stamp));
+    for (_, path) in previous.into_iter().skip(SESSION_FILES - 1) {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 pub fn update(
@@ -46,17 +78,23 @@ pub fn update(
                     let mut writer = std::io::BufWriter::new(file);
                     let _ = writeln!(writer, "elapsed_s,frame_ms,playing");
                     performance.log = Some(writer);
+                    retain_sessions(&directory, stamp);
                 }
             }
         }
         if let Some(log) = performance.log.as_mut() {
-            let _ = writeln!(
+            let stored = writeln!(
                 log,
                 "{:.4},{:.4},{}",
                 real.elapsed_secs_f64(),
                 real.delta_secs_f64() * 1000.0,
                 session.screen == Screen::Playing
-            );
+            )
+            .is_ok();
+            performance.rows += usize::from(stored);
+            if !stored || performance.rows >= SESSION_ROWS {
+                performance.log = None;
+            }
         }
     }
     performance.since += time.delta_secs();

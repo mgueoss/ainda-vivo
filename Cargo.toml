@@ -1,6 +1,6 @@
 [package]
 name = "ainda-vivo"
-version = "0.0.12-dev.6"
+version = "0.0.12-dev.7"
 edition = "2024"
 rust-version = "1.89"
 publish = false
@@ -11,17 +11,14 @@ members = ["crates/ainda_vivo_core", "crates/ainda_vivo_launcher"]
 resolver = "3"
 
 [features]
-dev-lab = [
-    "bevy/bevy_gltf", "bevy/bevy_animation", "bevy/png", "bevy/reflect_auto_register",
-    "dep:bevy_gltf", "dep:serde", "dep:serde_json"
-]
+dev-lab = []
 
 [dependencies]
 ainda_vivo_core = { path = "crates/ainda_vivo_core" }
-serde = { version = "1", features = ["derive"], optional = true }
-serde_json = { version = "1", optional = true }
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
 # Enable skeletal clips in the loader as well as in the engine's animation plugin.
-bevy_gltf = { version = "=0.18.1", default-features = false, features = ["bevy_animation"], optional = true }
+bevy_gltf = { version = "=0.18.1", default-features = false, features = ["bevy_animation"] }
 zune-jpeg = { version = "=0.5.15", default-features = false, features = ["std"] }
 bevy = { version = "=0.18.1", default-features = false, features = [
     "std", "async_executor", "multi_threaded", "bevy_asset", "bevy_log",
@@ -29,7 +26,7 @@ bevy = { version = "=0.18.1", default-features = false, features = [
     "bevy_camera", "bevy_light", "bevy_mesh", "bevy_image", "bevy_shader",
     "bevy_render", "bevy_core_pipeline", "bevy_pbr", "bevy_text",
     "bevy_ui", "bevy_ui_render", "default_font", "tonemapping_luts", "zstd_rust",
-    "bevy_audio"
+    "bevy_audio", "bevy_gltf", "bevy_animation", "png", "reflect_auto_register"
 ] }
 
 [profile.dev]

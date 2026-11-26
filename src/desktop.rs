@@ -103,7 +103,7 @@ pub fn simulate(
     mut session: ResMut<Session>,
     mut player: ResMut<LocalPlayer>,
     mut solids: Local<Option<[Vec<Aabb>; 2]>>,
-    #[cfg(feature = "dev-lab")] comfort: Res<Comfort>,
+    comfort: Res<Comfort>,
 ) {
     if world.is_changed() || solids.is_none() {
         *solids = Some([world.active(false).collect(), world.active(true).collect()]);
@@ -128,7 +128,7 @@ pub fn simulate(
         return;
     }
     let mut command = player.command;
-    #[cfg(feature = "dev-lab")]
+
     if comfort.psycho_motion {
         command.movement *= 1.0 - session.hunt_effect.motion(session.elapsed) * comfort.psycho_av;
     }

@@ -165,7 +165,10 @@ pub fn input(
     mut exit: MessageWriter<AppExit>,
 ) {
     menu.sync(&session);
-    if !smoke.menu && (smoke.enabled || !window.single().is_ok_and(|window| window.focused)) {
+    if !smoke.menu
+        && !smoke.campaign
+        && (smoke.enabled || !window.single().is_ok_and(|window| window.focused))
+    {
         return;
     }
     let escape = keys.just_pressed(KeyCode::Escape);

@@ -17,7 +17,7 @@ pub fn interact(
     mut session: ResMut<Session>,
     camera: Query<&Transform, With<MainCamera>>,
     targets: Query<&Interactable>,
-    #[cfg(feature = "dev-lab")] mut physical: Option<ResMut<crate::lab::observer::Campaign>>,
+    mut physical: Option<ResMut<crate::presence::observer::Campaign>>,
 ) {
     session.prompt.clear();
     if session.screen != Screen::Playing || session.collapse_active() {
@@ -41,7 +41,7 @@ pub fn interact(
                 "acender luminária da mesa"
             };
         }
-        #[cfg(feature = "dev-lab")]
+
         if item.action == Action::CheckRelay
             && physical
                 .as_ref()
@@ -72,7 +72,6 @@ pub fn interact(
     let key = format!("{:?}", bindings.key("interact", KeyCode::KeyE));
     session.prompt = format!("[{}] {}", key.strip_prefix("Key").unwrap_or(&key), label);
     if keys.just_pressed(bindings.key("interact", KeyCode::KeyE)) {
-        #[cfg(feature = "dev-lab")]
         if let Some(physical) = &mut physical {
             physical.activity(
                 target.action,

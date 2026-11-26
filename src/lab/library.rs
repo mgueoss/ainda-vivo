@@ -1,31 +1,25 @@
 use super::{
     Lab, Options,
-    motion::{self, ClipMotion, Clock, Limb, MotionEvent},
-    observer::Pose,
+    motion::{self, Clock, Limb, MotionEvent},
     room::{FLOOR, Guide, LAYER, Seat},
     settings::{Config, Model, Surface},
 };
+pub(crate) use crate::presence::rig::{Catalog, Part, Player, Stats};
 use crate::{
     app::{CollisionWorld, Screen, Session},
+    presence::rig::{corners, on_model_ready, stats_for},
     scene::{presence, station::EXIT_GATE},
 };
 use ainda_vivo_core::collision::{Aabb, body_bounds};
 use bevy::{
-    animation::graph::{AnimationGraph, AnimationGraphHandle, AnimationNodeIndex},
-    asset::{LoadState, RenderAssetUsages},
-    camera::{
-        primitives::MeshAabb,
-        visibility::{NoFrustumCulling, RenderLayers},
-    },
-    gltf::{Gltf, GltfLoaderSettings, GltfMesh, GltfSkin},
+    asset::RenderAssetUsages,
+    camera::visibility::RenderLayers,
     light::NotShadowCaster,
-    math::Affine3A,
     mesh::{
         PrimitiveTopology, VertexAttributeValues,
         skinning::{SkinnedMesh, SkinnedMeshInverseBindposes},
     },
     prelude::*,
-    scene::SceneInstanceReady,
 };
 use std::collections::{BTreeSet, HashSet};
 
@@ -37,91 +31,13 @@ struct Piece {
 }
 
 #[derive(Clone, Default)]
-struct Record {
+pub(crate) struct Record {
     parts: Vec<Piece>,
     colliders: Vec<Aabb>,
     stats: Stats,
 }
 
-#[derive(Clone, Default)]
-pub(super) struct Stats {
-    pub meters: Option<Vec3>,
-    pub vertices: usize,
-    pub triangles: usize,
-    pub materials: usize,
-    pub textures: usize,
-    pub bones: usize,
-    pub colliders: usize,
-}
-
-pub(super) struct Clip {
-    pub label: String,
-    pub duration: f32,
-    pub motion: ClipMotion,
-    node: AnimationNodeIndex,
-}
-
-struct Imported {
-    scene: Handle<Scene>,
-    stats: Stats,
-    graph: Handle<AnimationGraph>,
-    clips: Vec<Clip>,
-}
-
-#[derive(Resource, Default)]
-pub(super) struct Catalog {
-    handle: Handle<Gltf>,
-    import: Option<Imported>,
-    objects: Option<[Record; 5]>,
-    overrides: [Handle<StandardMaterial>; 3],
-    revision: u32,
-    station_entity: Option<Entity>,
-    pub error: Option<String>,
-}
-
 impl Catalog {
-    pub fn spawn_observer(
-        &self,
-        commands: &mut Commands,
-        pose: Pose,
-        transform: Transform,
-        parent: Option<Entity>,
-    ) -> Option<Entity> {
-        let scene = &self.import.as_ref()?.scene;
-        let mut root = commands.spawn((
-            Name::new("A Presença · Observador"),
-            SceneRoot(scene.clone()),
-            pose,
-            transform,
-            Visibility::Inherited,
-        ));
-        if let Some(parent) = parent {
-            root.insert(ChildOf(parent));
-        }
-        Some(root.observe(on_model_ready).id())
-    }
-
-    pub fn reload(&self, assets: &AssetServer) {
-        if let Some(path) = self.handle.path() {
-            assets.reload(path.clone());
-        }
-    }
-
-    pub fn clips(&self) -> &[Clip] {
-        self.import.as_ref().map_or(&[], |model| &model.clips)
-    }
-
-    pub fn number(&self, id: u8) -> Option<usize> {
-        self.clips().iter().position(|clip| {
-            clip.motion.duration > 0.0
-                && clip.label.get(..2).and_then(|n| n.parse().ok()) == Some(id)
-        })
-    }
-
-    pub fn revision(&self) -> u32 {
-        self.revision
-    }
-
     pub fn stats(&self, model: Model) -> Option<&Stats> {
         match model {
             Model::Presence => self.import.as_ref().map(|mesh| &mesh.stats),
@@ -149,116 +65,7 @@ pub(super) struct Viewer {
 }
 
 #[derive(Component)]
-pub(super) struct Part {
-    owner: Entity,
-    original: Handle<StandardMaterial>,
-}
-
-#[derive(Component)]
-pub(super) struct Player {
-    owner: Entity,
-    clip: usize,
-    clock: Clock,
-    fade: Fade,
-    evaluating: bool,
-}
-
-impl Player {
-    fn evaluate(
-        &mut self,
-        animator: Entity,
-        enabled: bool,
-        graph: &Handle<AnimationGraph>,
-        commands: &mut Commands,
-    ) {
-        if enabled == self.evaluating {
-            return;
-        }
-        self.evaluating = enabled;
-        if enabled {
-            commands
-                .entity(animator)
-                .insert(AnimationGraphHandle(graph.clone()));
-        } else {
-            commands.entity(animator).remove::<AnimationGraphHandle>();
-        }
-    }
-}
-
-#[derive(Default)]
-struct Fade {
-    from: Vec<(AnimationNodeIndex, f32)>,
-    time_left: f32,
-    duration: f32,
-}
-
-impl Fade {
-    fn start(&mut self, player: &mut AnimationPlayer, node: AnimationNodeIndex, duration: f32) {
-        self.from.clear();
-        if duration > 0.0 {
-            self.from.extend(
-                player
-                    .playing_animations()
-                    .map(|(index, animation)| (*index, animation.weight()))
-                    .filter(|(_, weight)| *weight > 0.001),
-            );
-        }
-        self.duration = duration;
-        self.time_left = duration;
-        if self.from.is_empty() {
-            player.stop_all();
-        }
-        let initial = if self.from.is_empty() {
-            1.0
-        } else {
-            self.from
-                .iter()
-                .find(|(index, _)| *index == node)
-                .map_or(0.0, |(_, w)| *w)
-        };
-        player.start(node).pause().set_weight(initial);
-    }
-
-    fn advance(&mut self, player: &mut AnimationPlayer, node: AnimationNodeIndex, dt: f32) {
-        if self.from.is_empty() || dt <= 0.0 {
-            return;
-        }
-        self.time_left = (self.time_left - dt).max(0.0);
-        let linear = 1.0 - self.time_left / self.duration;
-        let incoming = linear * linear * (3.0 - 2.0 * linear);
-        let mut weight = incoming;
-        for (index, old) in self.from.iter().copied() {
-            if index == node {
-                weight += old * (1.0 - incoming);
-            } else if self.time_left == 0.0 {
-                player.stop(index);
-            } else if let Some(outgoing) = player.animation_mut(index) {
-                outgoing.set_weight(old * (1.0 - incoming));
-            }
-        }
-        if let Some(current) = player.animation_mut(node) {
-            current.set_weight(weight);
-        }
-        if self.time_left == 0.0 {
-            self.from.clear();
-        }
-    }
-}
-
-#[derive(Component)]
 pub(super) struct StationPreview;
-
-pub(super) fn begin_import(
-    mut catalog: ResMut<Catalog>,
-    options: Res<Options>,
-    server: Res<AssetServer>,
-) {
-    catalog.handle =
-        server.load_with_settings(options.path(), |settings: &mut GltfLoaderSettings| {
-            settings.load_cameras = false;
-            settings.load_lights = false;
-        });
-}
 
 type StationMeshes<'w, 's> = Query<
     'w,
@@ -272,26 +79,10 @@ type StationMeshes<'w, 's> = Query<
     Without<Part>,
 >;
 
-type GltfAssets<'w> = (
-    Res<'w, Assets<Gltf>>,
-    Res<'w, Assets<GltfMesh>>,
-    Res<'w, Assets<GltfSkin>>,
-);
-
-#[allow(
-    clippy::too_many_arguments,
-    reason = "Asset types and original equipment remain independently scoped."
-)]
-pub(super) fn finish_import(
+pub(super) fn prepare_lab_models(
     mut commands: Commands,
     mut catalog: ResMut<Catalog>,
-    server: Res<AssetServer>,
-    mut events: MessageReader<AssetEvent<Gltf>>,
-    data: GltfAssets,
-    animation: (Res<Assets<AnimationClip>>, ResMut<Assets<AnimationGraph>>),
-    spawning: (Res<Assets<Scene>>, Res<AppTypeRegistry>),
-    mut meshes: ResMut<Assets<Mesh>>,
-    mut materials: ResMut<Assets<StandardMaterial>>,
+    (mut meshes, mut materials): (ResMut<Assets<Mesh>>, ResMut<Assets<StandardMaterial>>),
     station: StationMeshes,
     solids: Res<CollisionWorld>,
     options: Res<Options>,
@@ -322,89 +113,6 @@ pub(super) fn finish_import(
                 ..default()
             }),
         ];
-    }
-    let id = catalog.handle.id();
-    let changed = events.read().any(|event| matches!(event,
-        AssetEvent::LoadedWithDependencies { id: loaded } | AssetEvent::Modified { id: loaded } if *loaded == id));
-    if (changed || (catalog.import.is_none() && catalog.error.is_none()))
-        && server.is_loaded_with_dependencies(id)
-        && let Some(gltf) = data.0.get(id)
-        && let Some(scene) = gltf
-            .default_scene
-            .clone()
-            .or_else(|| gltf.scenes.first().cloned())
-    {
-        if let Some(asset) = spawning.0.get(&scene)
-            && let Err(error) = asset.clone_with(&spawning.1)
-        {
-            let message = format!("Cena GLB incompatível: {error}");
-            warn!("{message}");
-            catalog.error = Some(message);
-            return;
-        }
-        let mut stats = stats_for(
-            gltf.meshes
-                .iter()
-                .filter_map(|handle| data.1.get(handle))
-                .flat_map(|gltf_mesh| {
-                    gltf_mesh
-                        .primitives
-                        .iter()
-                        .map(|prim| (&prim.mesh, prim.material.as_ref(), Affine3A::IDENTITY))
-                }),
-            &meshes,
-            &materials,
-        );
-        stats.bones = gltf
-            .skins
-            .iter()
-            .filter_map(|handle| data.2.get(handle))
-            .map(|skin| skin.joints.len())
-            .sum();
-        let mut ordered = gltf.named_animations.iter().collect::<Vec<_>>();
-        ordered.sort_unstable_by_key(|(name, _)| *name);
-        let mut graphs = animation.1;
-        let (graph, nodes) =
-            AnimationGraph::from_clips(ordered.iter().map(|(_, clip)| (*clip).clone()));
-        let manifest = ClipMotion::load().unwrap_or_else(|error| {
-            warn!("Metadados da Presença inválidos: {error}");
-            Vec::new()
-        });
-        let clips = ordered
-            .into_iter()
-            .zip(nodes)
-            .map(|((label, clip), node)| {
-                let duration = animation.0.get(clip).map_or(0.0, AnimationClip::duration);
-                let motion = manifest
-                    .iter()
-                    .find(|meta| meta.label == **label && (meta.duration - duration).abs() < 0.001)
-                    .cloned()
-                    .unwrap_or_else(|| ClipMotion::legacy(label));
-                Clip {
-                    label: label.to_string(),
-                    duration,
-                    motion,
-                    node,
-                }
-            })
-            .collect();
-        info!(
-            "Dev Lab: GLB importado ({} triângulos, {} vértices, {} ossos, {} texturas).",
-            stats.triangles, stats.vertices, stats.bones, stats.textures
-        );
-        catalog.import = Some(Imported {
-            scene,
-            stats,
-            graph: graphs.add(graph),
-            clips,
-        });
-        catalog.revision = catalog.revision.wrapping_add(1);
-        catalog.error = None;
-        if let Some(entity) = catalog.station_entity.take() {
-            commands.entity(entity).despawn();
-        }
-    } else if let Some(LoadState::Failed(error)) = server.get_load_state(id) {
-        catalog.error = Some(format!("Erro ao carregar GLB: {error}"));
     }
     if options.preview_station
         && session.screen != Screen::Menu
@@ -630,81 +338,6 @@ fn legacy_record(meshes: &mut Assets<Mesh>, materials: &mut Assets<StandardMater
     }
 }
 
-fn stats_for<'a>(
-    pieces: impl IntoIterator<
-        Item = (
-            &'a Handle<Mesh>,
-            Option<&'a Handle<StandardMaterial>>,
-            Affine3A,
-        ),
-    >,
-    meshes: &Assets<Mesh>,
-    materials: &Assets<StandardMaterial>,
-) -> Stats {
-    let mut stats = Stats::default();
-    let mut material_ids = HashSet::new();
-    let mut images = HashSet::new();
-    let mut low = Vec3::splat(f32::INFINITY);
-    let mut high = -low;
-    for (asset, material, transform) in pieces {
-        if let Some(mesh) = meshes.get(asset) {
-            let vertices = mesh.count_vertices();
-            let points = mesh.indices().map_or(vertices, |indices| indices.len());
-            stats.vertices += vertices;
-            stats.triangles += match mesh.primitive_topology() {
-                PrimitiveTopology::TriangleList => points / 3,
-                PrimitiveTopology::TriangleStrip => points.saturating_sub(2),
-                _ => 0,
-            };
-            if let Some(aabb) = mesh.compute_aabb() {
-                for point in corners(Aabb {
-                    min: aabb.min().into(),
-                    max: aabb.max().into(),
-                }) {
-                    let point = transform.transform_point3(point);
-                    low = low.min(point);
-                    high = high.max(point);
-                }
-            }
-        }
-        if let Some(material) = material
-            && material_ids.insert(material.id())
-            && let Some(mat) = materials.get(material)
-        {
-            images.extend(
-                [
-                    &mat.base_color_texture,
-                    &mat.normal_map_texture,
-                    &mat.metallic_roughness_texture,
-                    &mat.occlusion_texture,
-                    &mat.emissive_texture,
-                ]
-                .into_iter()
-                .flatten()
-                .map(Handle::id),
-            );
-        }
-    }
-    stats.meters = low.is_finite().then_some(high - low);
-    stats.materials = material_ids.len();
-    stats.textures = images.len();
-    stats
-}
-
-fn corners(aabb: Aabb) -> [Vec3; 8] {
-    std::array::from_fn(|i| {
-        let mut point = Vec3::ZERO;
-        for axis in 0..3 {
-            point[axis] = if i & (1 << axis) != 0 {
-                aabb.max[axis]
-            } else {
-                aabb.min[axis]
-            };
-        }
-        point
-    })
-}
-
 type PartControls<'w, 's> = Query<
     'w,
     's,
@@ -749,7 +382,7 @@ pub(super) fn sync(
         let current = config.instances.get(viewer.index);
         if parent.parent() != active.root
             || current.is_none_or(|spec| spec.model != viewer.model)
-            || (viewer.model == Model::Presence && viewer.revision != catalog.revision)
+            || (viewer.model == Model::Presence && viewer.revision != catalog.revision())
         {
             commands.entity(entity).despawn();
             continue;
@@ -786,7 +419,7 @@ pub(super) fn sync(
                 Viewer {
                     index,
                     model: spec.model,
-                    revision: catalog.revision,
+                    revision: catalog.revision(),
                 },
                 ChildOf(active.root),
                 pose,
@@ -1045,139 +678,6 @@ fn wire_vertices(mesh: &Mesh, part: &WirePart) -> Vec<[f32; 3]> {
     lines
 }
 
-fn on_model_ready(
-    ready: On<SceneInstanceReady>,
-    mut commands: Commands,
-    hierarchy: Query<&Children>,
-    materials: Query<&MeshMaterial3d<StandardMaterial>>,
-    animators: Query<&AnimationPlayer>,
-    catalog: Res<Catalog>,
-    physical: Query<&Pose>,
-) {
-    let Some(import) = &catalog.import else {
-        return;
-    };
-    let in_lab = physical.get(ready.entity).map_or(true, |pose| pose.lab);
-    for descendant in hierarchy.iter_descendants(ready.entity) {
-        if let Ok(material) = materials.get(descendant) {
-            commands.entity(descendant).insert((
-                NoFrustumCulling,
-                Part {
-                    owner: ready.entity,
-                    original: material.0.clone(),
-                },
-            ));
-            if in_lab {
-                commands
-                    .entity(descendant)
-                    .insert(RenderLayers::layer(LAYER));
-            }
-        }
-        if animators.contains(descendant) {
-            commands.entity(descendant).insert((
-                AnimationGraphHandle(import.graph.clone()),
-                Player {
-                    owner: ready.entity,
-                    clip: usize::MAX,
-                    clock: Clock::default(),
-                    fade: Fade::default(),
-                    evaluating: true,
-                },
-            ));
-        }
-    }
-}
-
-pub(super) fn animate_observer(
-    mut commands: Commands,
-    catalog: Res<Catalog>,
-    lab: Res<Lab>,
-    time: Res<Time>,
-    mut animators: Query<(Entity, &mut AnimationPlayer, &mut Player)>,
-    roots: Query<(&Pose, &Transform)>,
-    mut signals: MessageWriter<super::observer::hunt::Signal>,
-) {
-    let Some(import) = &catalog.import else {
-        return;
-    };
-    for (entity, mut player, mut state) in &mut animators {
-        let Ok((pose, transform)) = roots.get(state.owner) else {
-            continue;
-        };
-        if pose.paused || (!pose.lab && lab.active.is_some()) {
-            state.evaluate(entity, false, &import.graph, &mut commands);
-            continue;
-        }
-        let Some(index) = catalog.number(pose.clip) else {
-            continue;
-        };
-        let clip = &import.clips[index];
-        let mut dirty = index != state.clip;
-        if dirty {
-            let blend = import
-                .clips
-                .get(state.clip)
-                .map_or(0.0, |old| clip.motion.state.blend_seconds(old.motion.state));
-            state.fade.start(&mut player, clip.node, blend);
-            state.clip = index;
-            state.clock = Clock::default();
-        }
-        let dt = time.delta_secs();
-        let mut marker = |event| {
-            use super::observer::hunt::{Cue, Signal};
-            if !matches!(pose.clip, 13 | 14 | 19 | 26..=28) {
-                return;
-            }
-            let (cue, lateral, depth) = match event {
-                motion::EventKind::FootLeft => (Cue::Foot, 0.23, -0.75),
-                motion::EventKind::FootRight => (Cue::Foot, -0.23, -0.75),
-                motion::EventKind::HandLeft => (Cue::Hand, 0.27, 0.47),
-                motion::EventKind::HandRight => (Cue::Hand, -0.27, 0.47),
-                _ => return,
-            };
-            let cue = match pose.clip {
-                13 => Cue::Walk,
-                14 => Cue::Hurry,
-                19 => Cue::Approach,
-                _ => cue,
-            };
-            signals.write(Signal {
-                cue,
-                at: transform.transform_point(Vec3::new(lateral, 0.08, depth)),
-                lab: pose.lab,
-            });
-        };
-        if let Some(phase) = pose.sample {
-            let at = clip.duration * phase;
-            if pose.clip == 26 && at > state.clock.time {
-                let delta = at - state.clock.time;
-                state
-                    .clock
-                    .advance(delta, &clip.motion, clip.duration, false, &mut marker);
-            } else {
-                state.clock.seek(at, &clip.motion, clip.duration);
-            }
-        } else {
-            state.clock.advance(
-                dt * pose.speed,
-                &clip.motion,
-                clip.duration,
-                clip.motion.repeat,
-                marker,
-            );
-        }
-        dirty |= !state.fade.from.is_empty();
-        state.fade.advance(&mut player, clip.node, dt);
-        if let Some(animation) = player.animation_mut(clip.node)
-            && animation.seek_time() != state.clock.time
-        {
-            animation.set_seek_time(state.clock.time);
-            dirty = true;
-        }
-        state.evaluate(entity, dirty, &import.graph, &mut commands);
-    }
-}
-
 pub(super) fn animate(
     config: Res<Config>,
     catalog: Res<Catalog>,
@@ -1198,7 +698,7 @@ pub(super) fn animate(
         let Ok(view) = viewers.get(state.owner) else {
             continue;
         };
-        if view.revision != catalog.revision {
+        if view.revision != catalog.revision() {
             continue;
         }
         let Some(spec) = config.instances.get(view.index) else {

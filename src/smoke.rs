@@ -1,4 +1,5 @@
 //! Bounded integration check for the full inspection, including the return and the exit.
+pub mod campaign;
 pub mod collapse;
 pub mod continuity;
 pub mod echoes;
@@ -40,9 +41,9 @@ pub struct SmokeTest {
     pub reality: bool,
     pub echoes: bool,
     pub menu: bool,
+    pub campaign: bool,
     #[cfg(feature = "dev-lab")]
     pub lab: bool,
-    #[cfg(feature = "dev-lab")]
     pub sound: bool,
     #[cfg(feature = "dev-lab")]
     pub cognitive: bool,
@@ -86,6 +87,9 @@ impl SmokeTest {
         let sound = cfg!(feature = "dev-lab") && args.iter().any(|a| a == "--smoke-sonoro");
         let cognitive =
             cfg!(feature = "dev-lab") && args.iter().any(|a| a == "--smoke-inteligencia");
+        let campaign = args.iter().any(|a| a == "--smoke-campaign")
+            || args.iter().any(|a| a == "--smoke-test")
+                && args.iter().any(|a| a == "--presence-physical");
         Self {
             enabled: lab
                 || sound
@@ -94,18 +98,22 @@ impl SmokeTest {
                 || menu
                 || echoes
                 || reality
+                || campaign
                 || args.iter().any(|a| a == "--smoke-test"),
             collapse,
             menu,
+            campaign,
             #[cfg(feature = "dev-lab")]
             lab,
-            #[cfg(feature = "dev-lab")]
             sound,
             #[cfg(feature = "dev-lab")]
             cognitive,
             reality,
             echoes,
-            check_audio: sound || cognitive || args.iter().any(|a| a == "--check-audio"),
+            check_audio: campaign
+                || sound
+                || cognitive
+                || args.iter().any(|a| a == "--check-audio"),
             report: args
                 .windows(2)
                 .find(|a| a[0] == "--smoke-report")
@@ -244,7 +252,13 @@ pub fn drive(
     if smoke.sound || smoke.cognitive {
         return;
     }
-    if !smoke.enabled || smoke.reality || smoke.echoes || smoke.menu || smoke.collapse {
+    if !smoke.enabled
+        || smoke.campaign
+        || smoke.reality
+        || smoke.echoes
+        || smoke.menu
+        || smoke.collapse
+    {
         return;
     }
     smoke.frame += 1;

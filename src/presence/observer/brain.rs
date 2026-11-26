@@ -2,6 +2,7 @@ pub(super) use super::cognition::Memory;
 use super::cognition::{Knowledge, MemoryBook, best_clue};
 use super::hunt::Hunt;
 use super::nav::{HUMAN, LOW, Nav, RouteScratch, point};
+use super::strategy::{Directive, Inputs, Mind};
 use super::tactics::{Decision, Goal, SearchPlan, SearchStep};
 use bevy::prelude::*;
 
@@ -23,6 +24,7 @@ pub enum State {
 }
 
 impl State {
+    #[cfg(feature = "dev-lab")]
     pub const ACTIVE: [Self; 9] = [
         Self::Rest,
         Self::Explore,
@@ -35,6 +37,7 @@ impl State {
         Self::Retreat,
     ];
 
+    #[cfg(feature = "dev-lab")]
     pub fn label(self) -> &'static str {
         match self {
             Self::Absent => "Ausente",
@@ -119,6 +122,7 @@ pub struct Brain {
     pub waypoint: usize,
     pub moving: f32,
     pub hunt: Hunt,
+    pub(super) mind: Mind,
     pub(super) memory: MemoryBook,
     pub(super) route: RouteScratch,
     pub(super) intended: Goal,
@@ -142,6 +146,7 @@ pub struct Brain {
     pending_noise: [Noise; 6],
     noise_count: usize,
     previous_eye: Option<Vec3>,
+    foot_route_until: f32,
 }
 
 pub fn forward(yaw: f32) -> Vec2 {
@@ -157,6 +162,22 @@ pub(super) fn turn(current: f32, desired: f32, amount: f32) -> f32 {
 }
 
 impl Brain {
+    pub(super) fn resume_on_foot(&mut self, at: Vec2) {
+        self.change(State::Investigate, "retomou pista andando", 9.0, Some(at));
+        self.foot_route_until = self.clock + 9.0;
+    }
+
+    pub(super) fn walking_portal(&self) -> bool {
+        self.goal.is_some() && self.clock < self.foot_route_until
+    }
+
+    pub(super) fn campaign(seed: u32) -> Self {
+        let mut brain = Self::seeded(seed);
+        brain.mind.enabled = true;
+        brain.next_manifest = 12.0;
+        brain
+    }
+
     pub fn seeded(seed: u32) -> Self {
         Self {
             rng: seed.max(1),
@@ -345,7 +366,9 @@ impl Brain {
         best_clue(self.clock, self.visible, self.seen, self.heard)
     }
 
+    #[cfg(feature = "dev-lab")]
     pub(super) fn forget(&mut self) {
+        self.mind.clear();
         self.memory = MemoryBook::default();
         self.seen = None;
         self.heard = None;
@@ -366,6 +389,7 @@ impl Brain {
             .record(self.clock, "memória limpa no laboratório", None);
     }
 
+    #[cfg(feature = "dev-lab")]
     pub(super) fn diagnosis(&self) -> String {
         use std::fmt::Write;
 
@@ -498,6 +522,7 @@ impl Brain {
         at + (self.pos - at).normalize_or_zero() * distance.min(at.distance(self.pos))
     }
 
+    #[cfg(any(feature = "dev-lab", test))]
     pub fn direct(&mut self, state: State, target: Vec2, config: Tuning) {
         let duration = if state == State::Investigate {
             config.investigation
@@ -858,7 +883,11 @@ impl Brain {
         if self.sample >= if self.hunt.active() { 0.095 } else { 0.14 } {
             let elapsed = std::mem::take(&mut self.sample);
             self.sample(f, config, elapsed);
-            if automatic && !self.hunt.active() {
+            if self.walking_portal() && f.view.protected {
+                self.foot_route_until = 0.0;
+                self.set_goal(None);
+            }
+            if automatic && !self.hunt.active() && !self.walking_portal() && !self.strategic(f) {
                 self.decide(f, config);
             }
         }
@@ -894,6 +923,41 @@ impl Brain {
             self.head = ((self.clock - self.plan.since) * 4.1).sin() * 0.45;
         }
         self.walk(dt, f, config, automatic);
+    }
+
+    fn strategic(&mut self, f: &Frame) -> bool {
+        if !self.mind.enabled || self.state == State::Rest && self.clock - self.born < 1.35 {
+            return false;
+        }
+        let (knowledge, clue) = self.knowledge();
+        let directive = self.mind.step(Inputs {
+            now: self.clock,
+            own: self.pos,
+            state: self.state,
+            knowledge,
+            clue,
+            observation: self.seen.filter(|_| self.visible),
+            noticed: self.noticed >= 0.75,
+            protected: f.view.protected,
+            blocked: self.memory.blocked,
+            nav: f.nav,
+            memory: &self.memory,
+            closed: f.door_closed,
+            visited: &self.visited,
+            hints: f.points,
+        });
+        match directive {
+            Some(Directive::Begin(state, destination)) => {
+                self.change(state, "executa plano estratégico", 2.5, destination);
+                true
+            }
+            Some(Directive::Continue) => true,
+            Some(Directive::Release) => {
+                self.set_goal(None);
+                false
+            }
+            None => false,
+        }
     }
 
     fn aim_head(&mut self, target: Option<Vec2>, dt: f32) {
@@ -989,6 +1053,7 @@ impl Brain {
     }
 
     fn walk_blocked(&mut self, f: &Frame, goal: Vec2, reason: &'static str) {
+        self.foot_route_until = 0.0;
         self.memory.blocked += 1;
         self.failed_target = Some(goal);
         if let Some(SearchStep::Go { link, .. }) = self.plan.current() {
@@ -1015,7 +1080,7 @@ pub fn player_sees(f: &Frame, point: Vec3) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lab::observer::nav::{Portal, Zone};
+    use crate::presence::observer::nav::{Portal, Zone};
     use ainda_vivo_core::collision::Aabb;
 
     fn box_at(x: f32, z: f32, width: f32, depth: f32) -> Aabb {

@@ -1,0 +1,209 @@
+AINDA VIVO — GUERRA PSICOLÓGICA
+Relatório técnico e comportamental da v0.0.12-dev.7
+26 de novembro de 2026
+
+BASE E ESTADO DA ENTREGA
+
+O trabalho partiu da v0.0.12-dev.6, commit auditado
+00f69f0b6f5ad43027b8e0ce6e252891a4b27c45. A compilação de Windows x64
+usa Rust, Bevy 0.18.1, a física cinemática da Estação 07 e os recursos
+da Presença já existentes. A edição comum valida a campanha com a
+Presença física. A edição experimental também abre o Dev Lab.
+A silhueta pode ser selecionada com --presence-legacy ou comparada com
+F5 quando o laboratório está habilitado.
+
+O ZIP experimental tem dois atalhos. JOGAR.cmd abre o inicializador
+universal para a campanha. ABRIR DEV LAB.cmd abre o inicializador no
+modo de ensaio. Clique em ABRIR DEV LAB e pressione Ctrl+I no jogo.
+O arquivo game/ainda-vivo.exe contém o jogo. Modelo, animações e sons
+estão embutidos. O jogo usa o runtime Visual C++ x64 do Windows.
+O inicializador verifica os requisitos e mantém o fluxo de reparo autorizado.
+
+SHA-256 do ZIP
+64d0ca37179742a6775dc7b6b61d3973a145fe91725048a14faf3d45ca6a700b
+
+SHA-256 do jogo no ZIP
+e63f89e04485dc11a4d67ea0275af2e1c9f47932f7fc8e44ab6b13a57d666142
+
+ESTRATÉGIAS IMPLEMENTADAS
+
+- Desvio de atenção. A Presença pede um som em setor diferente, tenta
+  ocupar um ponto coberto e avalia as reações que conseguiu observar.
+- Interceptação adaptativa. A Presença combina direção vista e passagens
+  aprendidas. O plano estimado precisa oferecer tempo para chegar.
+- Falsa retirada. A entidade recua, espera e revisita a hipótese
+  anterior. Pode encontrar um rastro ou desistir.
+- Emboscada paciente. A criatura procura um ponto de cobertura com linha
+  para a passagem provável. Ela caminha até a posição e espera.
+- Perseguição enganosa. Um pedido de corrida sonora pode preceder a
+  ameaça da criatura. A visão, a geometria e o diretor decidem se existe
+  oportunidade de caçada física no período da ameaça.
+- Investigação. O cérebro usa a melhor pista recente, a direção de
+  movimento e as passagens. Pistas distantes favorecem um trecho curto
+  na direção de uma ligação válida. Uma confirmação visual encerra a
+  busca e permite que a decisão seguinte use evidências novas.
+
+SELEÇÃO, MEMÓRIA E FALHAS
+
+A estratégia define o objetivo. O plano contém de três a cinco ações,
+hipótese, confiança, custo, prazo de 6 a 20 s e critérios de interrupção.
+O cérebro compara utilidades com base na evidência, no estado local, nos
+hábitos e nos custos geométricos. Os motores de caminhada e caçada
+executam os comandos, um de cada vez. Rota inviável, proteção,
+prazo vencido ou resposta inesperada podem encerrar um plano.
+
+A memória visual dura 9 s e a auditiva, 8 s. O ator guarda até 12
+episódios e 12 hábitos dirigidos, com horizonte de 88 s para as travessias.
+Até 12 resultados estratégicos influenciam as próximas prioridades,
+com decaimento em 110 s e viés de -0,55 a +0,23. Dois bloqueios reduziram
+a utilidade da interceptação de 0,778 para 0,360 no ensaio. Em arena
+simétrica, a mesma pose e a mesma pista passaram a favorecer a passagem 2
+após a análise de novos cruzamentos e reveses da passagem 1. As falhas
+mudam prioridades dentro da tentativa. Proteção e indisponibilidade do
+diretor são resultados neutros. Uma retomada limpa hipóteses e histórico.
+
+COORDENAÇÃO E CONTRAJOGO
+
+Uma solicitação sonora carrega ID, tipo, setor aproximado, setor próprio,
+intensidade e janela, com vínculo à tentativa e à revisão perceptiva.
+O diretor pode reservar, emitir, rejeitar e interromper o evento. O
+retorno leva ID e estado de entrega. A reação depende de visão confirmada,
+setor percorrido e direção observada. O diretor pode escolher fontes
+apropriadas ao ouvido e ao enquadramento do jogador. A encenação usa a
+pose real para verificar a visibilidade de uma aparição e a viabilidade
+de contatos e fugas. O planejador usa pistas filtradas.
+
+As ilusões reutilizam trilhas de passos, respiração e corrida em três
+categorias internas. Só os eventos físicos alimentam a audição da
+criatura. O relé da Elétrica produz um estalo após 1,45 s, dando tempo
+para mudar de direção. Movimento lento, esquinas, portas, caminhos
+alternativos, posto de pausa e luminária do Arquivo ajudam a interromper
+uma aproximação. Uma passagem inadequada para a corrida pode levar a uma
+freada e retomada em pé. A caminhada e o contato respeitam volumes.
+
+PARÂMETROS DA ENTREGA
+
+- Operador em corrida 4,50 m/s. Presença 4,95 m/s, aceleração 4,20 m/s²,
+  esforço de ataque 7,5 s, corrida mais busca até 12 s.
+- Avaliação de caçada a cada 0,35 s. Primeira janela aos 36 s, fase
+  Elétrica ou posterior. Distância entre 5,5 e 17,2 m, visão recente,
+  postura válida e duas saídas locais possíveis.
+- Aprovação de 38%, ou 49% com velocidade testemunhada acima de 2,7 m/s.
+  Preparação entre 1,65 e 3 s. Chance de blefe de 36% após a aprovação.
+  Intervalo de 15 s após sorteio recusado e 115–163 s após aprovação.
+- Pedidos de ilusão a partir de 18 s. Solicitação válida de 0,08 a 2,25 s
+  após ser criada. Uma apresentação acústica por janela e pausa de 29 s
+  para novas reservas estratégicas.
+- Perfis exclusivos do Lab. Moderado 5,50 m/s, 5,00 m/s², ataque 12 s e
+  corrida mais busca 18 s. Intenso 6,00 m/s, 6,00 m/s², 16 s e 25 s.
+  Em corredor livre com fuga automatizada, Base chegou ao limite sem
+  contato, Moderado fez contato em 12,82 s e Intenso em 9,27 s, incluindo
+  a preparação. Com porta fechada, todos perderam o rastro em 6,05 s.
+  A campanha ficou com Base.
+
+CAMPANHAS COMPLETAS — TESTES AUTOMATIZADOS
+
+Perfil                    Seed        Hz  Tempo(s) Manifestações Planos Caçadas
+Corrida                   20261118    60    59,283        1        2       0
+Cauteloso                 17          30    95,773        2        0       0
+Explorador                42         120   112,243        1        1       0
+Distração                 711         60    64,333        1        2       0
+Repetição                 318         60    85,570        1        3       0
+Mudança de comportamento 4141        60    87,187        2        2       0
+Explorador extra          3           60   112,776        2        0       0
+Explorador extra          19          60   112,776        2        1       1
+Explorador extra          61          60   112,776        2        0       0
+Explorador extra          77          60   112,776        1        1       0
+Explorador extra          167         60   112,776        2        0       0
+
+As 11 campanhas terminaram com Escaped. Houve 17 manifestações, 12
+planos iniciados, uma caçada espontânea e um contato físico. A seed 19
+recebeu a oportunidade aos 36,10 s, a 15,3 m. A criatura correu desde
+38,13 s. O roteiro completou a vistoria após o contato. A edição sem
+Dev Lab repetiu com sucesso a campanha Corrida, em ensaio separado.
+
+Recusas registradas a cada 0,35 s. Ator ausente 1.448, falta de visão
+891, proteção 387, ocupado 124, postura 90, tempo 11, alcance 10, ritmo
+6, sorteio 1. A auditoria encontrou zero caçadas naturais em três rotas
+originais. As amostras são pequenas e vieram de protocolos distintos.
+
+EVIDÊNCIAS DE DECISÃO
+
+- Campanha, seed 20261118. Aos 38,33 s, a Presença planejou perseguição
+  enganosa com confiança 0,94. O diretor reservou Rush aos 38,42 s no
+  setor 13, com o ator no setor 6. Aos 38,67 s o padrão emitiu seu
+  primeiro evento. O plano terminou Protected após a primeira ação.
+- Campanha, seed 42. Aos 63,65 s, a falsa retirada terminou Expired
+  após dois passos, com confiança inicial 0,51.
+- Ensaio de desvio. O mesmo pedido deu Success, Ignored e Unexpected
+  para três reações sintéticas. Na terceira, o plano encerrou cedo.
+- Ensaio de emboscada. O ator caminhou de (2,90; -3,55) para
+  (6,10; -4,00), sem falha de varredura, e encerrou a espera sem pista.
+- Ensaio de audição. Ruído físico em (3,30; -5,20) gerou uma hipótese em
+  (3,20; -4,80). Duas posições ocultas produziram decisões iguais
+  enquanto se manteve o silêncio.
+
+AUDITORIA E LIMITES
+
+AV-A01. As três expectativas da silhueta ficaram no roteiro legado.
+A troca visual e a contagem de imagens continuam verificadas nesse
+roteiro. Campanha física, captura e OS 17 têm ensaios próprios.
+
+AV-A02. Acesso–Carga e Acesso–Arquivo continuam com 0/17 eixos retos
+livres para a postura baixa. O planejamento classifica as ligações e
+encontra rota em pé nos colisores reais. A transição de corrida para
+travessia em pé foi exercitada em geometria controlada.
+
+AV-A03 e AV-A07. A gravação foi recuperada sem reiniciar após erro de
+acesso no Windows. Oito CSVs reconhecidos ficaram disponíveis após a
+rotação e arquivos com outros nomes foram preservados. Cada sessão tem
+um limite de 180.000 linhas.
+
+AV-A04 e AV-A13. A edição comum tem a Presença física como padrão. Os
+dois atalhos do ZIP abriram o jogo correto no mesmo Windows com o
+inicializador universal e dispositivo Vulkan. Instalação em sistema
+limpo sem Visual C++ e testes em outro adaptador ainda estão pendentes.
+
+AV-A05 e AV-A09. A raridade da caçada foi medida e houve uma corrida
+espontânea. A matriz verificou memória e isolamento de pistas ocultas
+em cenários controlados. A campanha natural mostrou investigação,
+falsa retirada e ameaça sonora. Faltam ocorrências espontâneas de desvio,
+interceptação e emboscada na amostra.
+
+AV-A06, A08, A10, A11, A12, A14 e A15. Continuam em acompanhamento a
+animação em alta velocidade, a orientação na Decantação, conforto e
+mixagem entre dispositivos, consistência visual da despedida, a
+combinação natural de caçada e colapso, persistência de campanha e
+medidas específicas de custo e latência durante uma caçada.
+
+DESEMPENHO GRÁFICO
+
+Windows 11, Ryzen 5 5600G, 16 GB de RAM, GTX 1660 SUPER, driver 610.88,
+Vulkan, 1280x720 e perfil dev otimizado. Rota Corrida da seed 20261118,
+motor de ensaio a 60 Hz. Quadro contado no relógio real do aplicativo.
+Com VSync, a dev.6 marcou 165,0 FPS de média e mediana de 6,032 ms,
+e a dev.7 marcou 165,0 FPS e 6,038 ms. Sem VSync, a dev.6 marcou
+461,8 FPS e 2,088 ms, e a dev.7 marcou 449,57 FPS e 2,155 ms. O
+protocolo da dev.6 incluiu capturas e o da dev.7 usou o relógio do
+aplicativo sem capturas nessas duas rodadas. O relatório de validação
+traz 1% low, P95 e tamanho da amostra. Caçada ativa, CPU exclusiva, RAM
+e VRAM carecem de uma comparação equivalente.
+
+VALIDAÇÃO E CONTINUIDADE
+
+Formatação, Clippy com e sem Dev Lab, compilação das duas edições e
+102 testes do workspace passaram. A matriz de regressão cognitiva com
+seed adicional passou 135 de 135 cenários. Os smokes Windows da caçada,
+do observador, da OS 17, da realidade, do colapso, do áudio e do Dev Lab
+passaram. O roteiro legado produziu 21 capturas dentro do próprio teste.
+Pacote x64, hashes, requisitos e os dois atalhos foram validados no
+Windows. Detalhes, registros e reproduções ficam em
+docs/VALIDACAO-v0.0.12-dev.7.md e na pasta de evidências da entrega.
+A arquitetura e os comandos estão no handoff.
+
+Na avaliação de direção, compare a fuga por esquinas e passagens
+alternativas, a leitura da ameaça sob iluminação real e a diferença de
+cadência entre corrida física e som ilusório. Registre a frequência em
+sessões longas com pessoas, a presença de planos raros e a justiça dos
+contatos. O medo, o conforto e a aceitação dos perfis rápidos dependem
+dessa avaliação.

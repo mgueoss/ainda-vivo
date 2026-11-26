@@ -5,7 +5,7 @@ const MANIFEST: &str = include_str!("../../assets/models/movimentos.json");
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum State {
+pub(crate) enum State {
     #[default]
     Idle,
     Watch,
@@ -21,6 +21,7 @@ pub(super) enum State {
 }
 
 impl State {
+    #[cfg(feature = "dev-lab")]
     pub fn label(self) -> &'static str {
         match self {
             Self::Idle => "Imóvel",
@@ -63,9 +64,10 @@ impl State {
     }
 }
 
+#[cfg(any(feature = "dev-lab", test))]
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum Posture {
+pub(crate) enum Posture {
     #[default]
     Human,
     Quad,
@@ -74,6 +76,7 @@ pub(super) enum Posture {
     Rise,
 }
 
+#[cfg(any(feature = "dev-lab", test))]
 impl Posture {
     pub fn dimensions(self, phase: f32) -> Vec3 {
         let human = Vec3::new(0.82, 2.24, 0.78);
@@ -95,7 +98,7 @@ impl Posture {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum Limb {
+pub(crate) enum Limb {
     FootLeft,
     FootRight,
     HandLeft,
@@ -103,6 +106,7 @@ pub(super) enum Limb {
 }
 
 impl Limb {
+    #[cfg(any(feature = "dev-lab", test))]
     pub const ALL: [Self; 4] = [
         Self::FootLeft,
         Self::FootRight,
@@ -110,6 +114,7 @@ impl Limb {
         Self::HandRight,
     ];
 
+    #[cfg(feature = "dev-lab")]
     pub fn joint(self) -> &'static str {
         match self {
             Self::FootLeft => "dedos_pe.L",
@@ -131,7 +136,7 @@ impl Limb {
 
 #[derive(Clone, Copy, Debug, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum EventKind {
+pub(crate) enum EventKind {
     FootLeft,
     FootRight,
     HandLeft,
@@ -143,7 +148,9 @@ pub(super) enum EventKind {
     Finished,
 }
 
+#[cfg(feature = "dev-lab")]
 impl EventKind {
+    #[cfg(feature = "dev-lab")]
     pub fn label(self) -> &'static str {
         match self {
             Self::FootLeft => "Pé E",
@@ -159,22 +166,26 @@ impl EventKind {
     }
 }
 
+#[cfg(feature = "dev-lab")]
 #[derive(Clone, Copy, Debug, Message)]
-pub(super) struct MotionEvent {
+pub(crate) struct MotionEvent {
     pub actor: Entity,
     pub kind: EventKind,
 }
 
+#[cfg(feature = "dev-lab")]
 #[derive(Clone, Copy, Debug, Default, Deserialize)]
 #[serde(rename_all = "snake_case")]
-pub(super) enum Direction {
+pub(crate) enum Direction {
     #[default]
     Forward,
     Side,
     Back,
 }
 
+#[cfg(feature = "dev-lab")]
 impl Direction {
+    #[cfg(feature = "dev-lab")]
     pub fn vector(self) -> Vec3 {
         match self {
             Self::Forward => Vec3::Z,
@@ -185,27 +196,31 @@ impl Direction {
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
-pub(super) struct Marker {
+pub(crate) struct Marker {
     pub at: f32,
     pub kind: EventKind,
 }
 
 #[derive(Clone, Copy, Debug, Deserialize)]
-pub(super) struct Stance {
+pub(crate) struct Stance {
     pub start: f32,
+    #[cfg(any(feature = "dev-lab", test))]
     pub end: f32,
     limb: Limb,
     plant: bool,
 }
 
 #[derive(Clone, Debug, Default, Deserialize)]
-pub(super) struct ClipMotion {
+pub(crate) struct ClipMotion {
     pub label: String,
+    #[cfg(any(feature = "dev-lab", test))]
     pub fps: f32,
     pub duration: f32,
     pub state: State,
+    #[cfg(feature = "dev-lab")]
     pub posture: Posture,
     pub repeat: bool,
+    #[cfg(feature = "dev-lab")]
     pub direction: Direction,
     speed: [f32; 2],
     markers: Vec<Marker>,
@@ -231,22 +246,30 @@ impl ClipMotion {
     }
 
     pub fn legacy(label: &str) -> Self {
-        let (state, posture) = match label.get(..2) {
-            Some("02") => (State::Watch, Posture::Human),
-            Some("03") => (State::Peek, Posture::Human),
-            Some("04") => (State::QuadrupedIdle, Posture::Quad),
-            Some("05" | "07") => (State::Farewell, Posture::Human),
-            _ => (State::Idle, Posture::Human),
+        let prefix = label.get(..2);
+        let state = match prefix {
+            Some("02") => State::Watch,
+            Some("03") => State::Peek,
+            Some("04") => State::QuadrupedIdle,
+            Some("05" | "07") => State::Farewell,
+            _ => State::Idle,
         };
         Self {
+            #[cfg(any(feature = "dev-lab", test))]
             fps: 30.0,
             state,
-            posture,
+            #[cfg(feature = "dev-lab")]
+            posture: if prefix == Some("04") {
+                Posture::Quad
+            } else {
+                Posture::Human
+            },
             repeat: true,
             ..default()
         }
     }
 
+    #[cfg(feature = "dev-lab")]
     pub fn grounded(&self, limb: Limb, phase: f32) -> bool {
         if self.stance.is_empty() {
             return matches!(self.posture, Posture::Quad)
@@ -262,12 +285,13 @@ impl ClipMotion {
         time * (start + 0.5 * (end - start) * phase(time, duration))
     }
 
+    #[cfg(feature = "dev-lab")]
     pub fn marks(&self) -> impl Iterator<Item = f32> + '_ {
         self.markers.iter().map(|marker| marker.at)
     }
 }
 
-pub(super) fn phase(time: f32, duration: f32) -> f32 {
+pub(crate) fn phase(time: f32, duration: f32) -> f32 {
     if duration > 0.0 {
         (time / duration).clamp(0.0, 1.0)
     } else {
@@ -275,7 +299,8 @@ pub(super) fn phase(time: f32, duration: f32) -> f32 {
     }
 }
 
-pub(super) fn gaze_phase(actor: Transform, observer: Vec3) -> f32 {
+#[cfg(any(feature = "dev-lab", test))]
+pub(crate) fn gaze_phase(actor: Transform, observer: Vec3) -> f32 {
     let local = actor.rotation.inverse() * (observer - actor.translation);
     let angle = local.x.atan2(local.z.max(0.25)).to_degrees();
     let facing = (local.z * 2.0 + 0.5).clamp(0.0, 1.0);
@@ -283,7 +308,7 @@ pub(super) fn gaze_phase(actor: Transform, observer: Vec3) -> f32 {
 }
 
 #[derive(Clone, Copy, Debug, Default)]
-pub(super) struct Clock {
+pub(crate) struct Clock {
     pub time: f32,
     pub distance: f32,
 }
@@ -336,14 +361,17 @@ impl Clock {
     }
 }
 
+#[cfg(any(feature = "dev-lab", test))]
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
-pub(super) enum Mode {
+pub(crate) enum Mode {
     Sequence,
     Track,
     Approach,
 }
 
+#[cfg(any(feature = "dev-lab", test))]
 impl Mode {
+    #[cfg(feature = "dev-lab")]
     pub fn label(self) -> &'static str {
         match self {
             Self::Sequence => "Sequência de poses",
@@ -387,13 +415,18 @@ impl Mode {
     }
 }
 
-pub(super) const APPROACH_X: f32 = -6.57;
-pub(super) const APPROACH_VIEW_Z: f32 = -1.65;
+#[cfg(any(feature = "dev-lab", test))]
+pub(crate) const APPROACH_X: f32 = -6.57;
+#[cfg(any(feature = "dev-lab", test))]
+pub(crate) const APPROACH_VIEW_Z: f32 = -1.65;
+#[cfg(any(feature = "dev-lab", test))]
 const APPROACH_START_Z: f32 = -10.10;
-pub(super) const TRACK_START: Vec3 = Vec3::new(APPROACH_X, 0.0, -14.3);
+#[cfg(any(feature = "dev-lab", test))]
+pub(crate) const TRACK_START: Vec3 = Vec3::new(APPROACH_X, 0.0, -14.3);
 
+#[cfg(any(feature = "dev-lab", test))]
 #[derive(Clone, Debug)]
-pub(super) struct Run {
+pub(crate) struct Run {
     pub mode: Mode,
     pub stage: usize,
     pub cycles: u8,
@@ -401,6 +434,7 @@ pub(super) struct Run {
     pub complete: bool,
 }
 
+#[cfg(any(feature = "dev-lab", test))]
 impl Run {
     pub fn new(mode: Mode) -> Self {
         Self {
@@ -453,7 +487,8 @@ impl Run {
 }
 
 // Quatro arcos tangentes de mesmo raio mantêm a pista na faixa livre da sala.
-pub(super) fn track(distance: f32) -> (Vec3, f32) {
+#[cfg(any(feature = "dev-lab", test))]
+pub(crate) fn track(distance: f32) -> (Vec3, f32) {
     const STRAIGHT: f32 = 2.45;
     const RADIUS: f32 = 4.65;
     const TURN: f32 = 0.37;

@@ -128,7 +128,6 @@ pub fn update(
         return;
     }
     let strength = comfort.vhs.strength();
-    #[cfg(feature = "dev-lab")]
     let strength =
         (strength + session.hunt_effect.tape(session.elapsed) * comfort.psycho_av).min(1.0);
     let parameters = Vec4::new(strength, session.elapsed, 0.0, 0.0);

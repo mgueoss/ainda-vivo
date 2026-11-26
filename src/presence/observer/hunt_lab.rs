@@ -18,25 +18,28 @@ pub enum HuntKnob {
     Acceleration,
     Start,
     Duration,
+    SearchLimit,
     Prepare,
     Reach,
 }
 
 impl HuntKnob {
-    pub const ALL: [(Self, &'static str, f32); 6] = [
+    pub const ALL: [(Self, &'static str, f32); 7] = [
         (Self::Speed, "Velocidade", 0.25),
         (Self::Acceleration, "Aceleração", 0.5),
         (Self::Start, "Distância inicial", 0.5),
-        (Self::Duration, "Limite", 0.5),
+        (Self::Duration, "Esforço", 0.5),
+        (Self::SearchLimit, "Corrida e busca", 0.5),
         (Self::Prepare, "Preparação", 0.2),
         (Self::Reach, "Alcance de contato", 0.1),
     ];
     fn setting(self, t: &mut hunt::Tuning) -> (&mut f32, f32, f32, &'static str) {
         match self {
-            Self::Speed => (&mut t.speed, 1.0, 5.7, " m/s"),
+            Self::Speed => (&mut t.speed, 1.0, 6.0, " m/s"),
             Self::Acceleration => (&mut t.acceleration, 1.0, 9.0, " m/s²"),
             Self::Start => (&mut t.start, 5.0, 13.0, " m"),
-            Self::Duration => (&mut t.duration, 2.0, 14.0, " s"),
+            Self::Duration => (&mut t.duration, 2.0, 16.0, " s"),
+            Self::SearchLimit => (&mut t.limit, 4.0, 25.0, " s"),
             Self::Prepare => (&mut t.prepare, 1.0, 5.0, " s"),
             Self::Reach => (&mut t.reach, 0.9, 1.8, " m"),
         }
@@ -57,6 +60,30 @@ pub enum HuntCommand {
     Result(Option<Contact>),
     Psychology,
     Adjust(HuntKnob, f32),
+    Profile(HuntProfile),
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum HuntProfile {
+    Base,
+    Moderate,
+    Intense,
+}
+
+impl HuntProfile {
+    pub fn tuning(self) -> hunt::Tuning {
+        let mut tuning = hunt::Tuning::default();
+        let (speed, acceleration, duration, limit) = match self {
+            Self::Base => (4.95, 4.2, 7.5, 12.0),
+            Self::Moderate => (5.5, 5.0, 12.0, 18.0),
+            Self::Intense => (6.0, 6.0, 16.0, 25.0),
+        };
+        tuning.speed = speed;
+        tuning.acceleration = acceleration;
+        tuning.duration = duration;
+        tuning.limit = limit;
+        tuning
+    }
 }
 
 pub struct HuntLab {
@@ -134,6 +161,7 @@ pub fn diagnostics(lab: &TestLab) -> String {
 
 pub fn hunt_command(active: &mut Active, config: &mut Config, action: HuntCommand) {
     match action {
+        HuntCommand::Profile(profile) => active.observer.hunt.tuning = profile.tuning(),
         HuntCommand::Start | HuntCommand::Bluff | HuntCommand::DoorTrial => {
             if !active.observer.enabled {
                 command(active, config, Command::Enable);

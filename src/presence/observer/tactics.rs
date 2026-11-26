@@ -30,6 +30,7 @@ impl Goal {
         Self::Withdraw,
     ];
 
+    #[cfg(feature = "dev-lab")]
     pub(super) fn label(self) -> &'static str {
         match self {
             Self::Wait => "Vigiar a área",
@@ -108,6 +109,7 @@ pub(super) enum SearchStep {
 }
 
 impl SearchStep {
+    #[cfg(feature = "dev-lab")]
     pub(super) fn describe(self) -> String {
         match self {
             Self::Go { at, link } => link.map_or_else(
@@ -241,7 +243,7 @@ pub(super) fn intercept(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lab::observer::nav::{Portal, Zone};
+    use crate::presence::observer::nav::{Portal, Zone};
     use ainda_vivo_core::collision::Aabb;
 
     #[test]

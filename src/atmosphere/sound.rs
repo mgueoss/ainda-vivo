@@ -18,11 +18,11 @@ pub use incidents::IncidentSchedule;
 use incidents::Kind;
 pub use spatial::Voice;
 use spatial::{MixTarget, RATE, channels};
-#[cfg(feature = "dev-lab")]
+
 mod choreography;
-#[cfg(feature = "dev-lab")]
+
 pub(crate) mod presence_audio;
-#[cfg(feature = "dev-lab")]
+
 mod presence_bank;
 
 #[derive(Resource)]
@@ -57,7 +57,7 @@ enum Sound {
     Trailing,
     Reception,
     ServiceEcho,
-    #[cfg(feature = "dev-lab")]
+
     Relay,
 }
 
@@ -275,7 +275,7 @@ pub fn emit(
         Res<crate::psychology::Effects>,
     ),
     mut gait: Local<Gait>,
-    #[cfg(feature = "dev-lab")] mut relay: MessageReader<crate::lab::observer::RelayClick>,
+    mut relay: MessageReader<crate::presence::observer::RelayClick>,
 ) {
     if (gait.attempt, gait.revision) != (session.attempt, session.perception_revision) {
         *gait = Gait {
@@ -290,7 +290,7 @@ pub fn emit(
         return;
     }
     let now = session.elapsed;
-    #[cfg(feature = "dev-lab")]
+
     for click in relay.read() {
         one_shot(
             &mut commands,
@@ -714,7 +714,7 @@ pub fn mix(
                 Sound::Trailing => 0.47,
                 Sound::Reception => 0.47,
                 Sound::ServiceEcho => 0.72,
-                #[cfg(feature = "dev-lab")]
+
                 Sound::Relay => 0.69,
             };
         if matches!(emitter.sound, Sound::Room) {

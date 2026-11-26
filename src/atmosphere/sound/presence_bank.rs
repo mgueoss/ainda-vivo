@@ -39,6 +39,7 @@ impl Family {
         Self::Thin,
     ];
 
+    #[cfg(feature = "dev-lab")]
     pub fn label(self) -> &'static str {
         match self {
             Self::Walk => "Passada lenta",

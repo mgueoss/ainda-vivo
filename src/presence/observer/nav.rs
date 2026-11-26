@@ -50,6 +50,7 @@ pub struct Portal {
 pub struct Nav {
     zones: Vec<Zone>,
     portals: Vec<Portal>,
+    low_crossings: Vec<bool>,
     room: Vec<Option<usize>>,
     edges: [Vec<u8>; 3],
     origin: Vec2,
@@ -90,6 +91,7 @@ impl Nav {
         let mut nav = Self {
             zones,
             portals,
+            low_crossings: Vec::new(),
             room: vec![None; (size.x * size.y) as usize],
             edges: std::array::from_fn(|_| vec![0; (size.x * size.y) as usize]),
             origin,
@@ -133,7 +135,53 @@ impl Nav {
                 }
             }
         }
+        nav.low_crossings = nav.portals.iter().map(|p| nav.low_crossing(*p)).collect();
         nav
+    }
+
+    fn low_crossing(&self, portal: Portal) -> bool {
+        let zone = self.zones[portal.rooms[0]];
+        let axis = if portal.at.x == zone.min.x || portal.at.x == zone.max.x {
+            Vec2::X
+        } else {
+            Vec2::Y
+        };
+        let lateral = Vec2::new(axis.y, axis.x);
+        let half = if axis == Vec2::X {
+            Vec3::new(LOW.z, LOW.y, LOW.x)
+        } else {
+            LOW
+        };
+        (-8..=8).any(|sample| {
+            let center = portal.at + lateral * (portal.width * 0.44 * sample as f32 / 8.0);
+            self.clear_body(center - axis * 1.12, center + axis * 1.12, half, false)
+        })
+    }
+
+    pub(super) fn uses_narrow_crossing(&self, from: Vec2, path: &[Vec2]) -> bool {
+        if self.low_crossings.iter().all(|&allowed| allowed) {
+            return false;
+        }
+        let mut previous = self.sector(from);
+        for &point in path {
+            let sector = self.sector(point);
+            if let (Some(a), Some(b)) = (previous, sector)
+                && a != b
+                && self
+                    .portals
+                    .iter()
+                    .zip(&self.low_crossings)
+                    .any(|(p, allowed)| !allowed && p.rooms.contains(&a) && p.rooms.contains(&b))
+            {
+                return true;
+            }
+            previous = sector;
+        }
+        false
+    }
+
+    pub(super) fn has_narrow_crossing(&self) -> bool {
+        self.low_crossings.contains(&false)
     }
 
     fn coord(&self, p: Vec2) -> IVec2 {
@@ -212,21 +260,26 @@ impl Nav {
 
     fn link(&self, a: usize, b: usize, segment: (Vec2, Vec2), closed: bool, half: Vec3) -> bool {
         a == b
-            || self.portals.iter().any(|&p| {
-                let (from, to) = segment;
-                let perpendicular = if from.x != to.x {
-                    (p.at.y - from.y).abs()
-                } else {
-                    (p.at.x - from.x).abs()
-                };
-                p.rooms.contains(&a)
-                    && p.rooms.contains(&b)
-                    && p.height >= half.y * 2.0
-                    && p.width > half.x * 2.0
-                    && !self.portal_gate(p, closed)
-                    && point((from + to) * 0.5 - p.at).length() <= p.width * 0.5
-                    && perpendicular <= p.width * 0.5 - half.x + 0.02
-            })
+            || self
+                .portals
+                .iter()
+                .zip(&self.low_crossings)
+                .any(|(&p, &low)| {
+                    let (from, to) = segment;
+                    let perpendicular = if from.x != to.x {
+                        (p.at.y - from.y).abs()
+                    } else {
+                        (p.at.x - from.x).abs()
+                    };
+                    p.rooms.contains(&a)
+                        && p.rooms.contains(&b)
+                        && (half.y != LOW.y || low)
+                        && p.height >= half.y * 2.0
+                        && p.width > half.x * 2.0
+                        && !self.portal_gate(p, closed)
+                        && point((from + to) * 0.5 - p.at).length() <= p.width * 0.5
+                        && perpendicular <= p.width * 0.5 - half.x + 0.02
+                })
     }
 
     pub fn acoustic(&self, a: Vec2, b: Vec2, closed: bool) -> f32 {
@@ -271,6 +324,7 @@ impl Nav {
             })
     }
 
+    #[cfg(any(feature = "dev-lab", test))]
     pub fn route(&self, from: Vec2, to: Vec2, closed: bool, path: &mut Vec<Vec2>) -> bool {
         self.plan(from, to, closed, false, path, &mut RouteScratch::default())
     }

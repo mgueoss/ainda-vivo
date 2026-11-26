@@ -19,6 +19,7 @@ pub(crate) enum Contact {
     Quiet,
 }
 
+#[cfg(feature = "dev-lab")]
 impl Contact {
     pub const ALL: [Self; 5] = [
         Self::Illusion,
@@ -113,6 +114,7 @@ pub struct Tuning {
     pub acceleration: f32,
     pub start: f32,
     pub duration: f32,
+    pub limit: f32,
     pub prepare: f32,
     pub reach: f32,
 }
@@ -124,6 +126,7 @@ impl Default for Tuning {
             acceleration: 4.2,
             start: 9.0,
             duration: 7.5,
+            limit: 12.0,
             prepare: 2.2,
             reach: 1.40,
         }
@@ -135,9 +138,11 @@ pub enum End {
     Contact,
     Lost,
     Route,
+    Narrow,
     Safe,
     Time,
     Bluff,
+    #[cfg(feature = "dev-lab")]
     Interrupted,
 }
 
@@ -147,9 +152,11 @@ impl End {
             Self::Contact => "contato confirmado",
             Self::Lost => "perdeu o rastro",
             Self::Route => "sem rota livre",
+            Self::Narrow => "passagem estreita, subiu para investigar",
             Self::Safe => "posto seguro",
             Self::Time => "limite da perseguição",
             Self::Bluff => "ameaça interrompida",
+            #[cfg(feature = "dev-lab")]
             Self::Interrupted => "interrompida pelo operador",
         }
     }
@@ -176,6 +183,7 @@ pub(super) enum Strategy {
     Withdraw,
 }
 
+#[cfg(feature = "dev-lab")]
 impl Strategy {
     pub(super) fn label(self) -> &'static str {
         match self {
@@ -243,6 +251,7 @@ pub struct Hunt {
     intercept: Option<([usize; 2], Vec2)>,
     next_tactic: f32,
     no_intercept_until: f32,
+    follow_on_foot: Option<Vec2>,
 }
 
 impl Hunt {
@@ -260,6 +269,7 @@ impl Hunt {
         self.phase != Phase::Idle
     }
 
+    #[cfg(feature = "dev-lab")]
     pub(super) fn forget_path(&mut self) {
         self.search = SearchPlan::default();
         self.intercept = None;
@@ -286,6 +296,7 @@ impl Hunt {
         self.active() && self.result == Some(Contact::Illusion)
     }
 
+    #[cfg(feature = "dev-lab")]
     pub fn preview(result: Contact) -> Self {
         Self {
             phase: Phase::Brake,
@@ -395,6 +406,12 @@ impl Hunt {
                 if self.result == Some(Contact::Illusion) {
                     b.next_manifest = b.clock + 45.0;
                     b.change(State::Absent, "eco dissipado", 0.0, None);
+                } else if let Some(at) = self.follow_on_foot.take() {
+                    if !f.view.protected && f.nav.clear_body(b.pos, b.pos, HUMAN, f.door_closed) {
+                        b.resume_on_foot(at);
+                    } else {
+                        b.retreat(f, "passagem deixou de ser segura", at);
+                    }
                 } else if self.end == Some(End::Lost) && b.visible {
                     b.change(State::Watch, "vigia depois de parar", 2.8, None);
                 } else {
@@ -439,7 +456,7 @@ impl Hunt {
     }
 
     fn run(&mut self, b: &mut Brain, dt: f32, f: &Frame) {
-        if self.age >= self.tuning.duration + 4.5 || self.effort >= self.tuning.duration {
+        if self.age >= self.tuning.limit || self.effort >= self.tuning.duration {
             self.stop(End::Time);
             return;
         }
@@ -476,6 +493,28 @@ impl Hunt {
             b.goal = pursuit_route(f, b, target, self.tuning.reach)
                 .or_else(|| fallback.and_then(|at| pursuit_route(f, b, at, self.tuning.reach)));
             b.memory.replans += 1;
+            let on_foot = b.goal.is_none()
+                && f.nav.has_narrow_crossing()
+                && f.nav.sector(target) != f.nav.sector(b.pos)
+                && f.nav.clear_body(b.pos, b.pos, HUMAN, f.door_closed)
+                && f.nav.plan(
+                    b.pos,
+                    target,
+                    f.door_closed,
+                    false,
+                    &mut b.path,
+                    &mut b.route,
+                )
+                && f.nav.uses_narrow_crossing(b.pos, &b.path);
+            if on_foot {
+                self.follow_on_foot = Some(target);
+                self.stop(End::Narrow);
+                self.brake_speed = 0.0;
+                return;
+            }
+            if b.goal.is_none() {
+                b.path.clear();
+            }
         }
         while b
             .path
@@ -823,7 +862,7 @@ pub fn motor_clear(f: &Frame, a: Vec2, b: Vec2, old: f32, yaw: f32) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::lab::observer::{
+    use crate::presence::observer::{
         brain,
         nav::{Nav, Portal, Zone},
     };
@@ -832,6 +871,74 @@ mod tests {
         reality::{Awakening, Reality},
         story::{Action, Phase as ProgressPhase},
     };
+
+    #[test]
+    fn a_narrow_portal_releases_the_run_into_standing_navigation() {
+        let nav = Nav::new(
+            vec![
+                Zone {
+                    min: Vec2::new(-8.0, -4.4),
+                    max: Vec2::new(0.0, 4.4),
+                },
+                Zone {
+                    min: Vec2::new(0.0, -4.4),
+                    max: Vec2::new(8.0, 4.4),
+                },
+            ],
+            vec![Portal {
+                rooms: [0, 1],
+                at: Vec2::ZERO,
+                width: 2.4,
+                height: 2.68,
+            }],
+            [2.5, -2.5]
+                .into_iter()
+                .map(|z| Aabb::from_center_size(Vec3::new(0.0, 1.4, z), Vec3::new(0.22, 2.8, 3.8)))
+                .collect(),
+            Some(Aabb::from_center_size(
+                Vec3::new(0.0, 1.4, 0.0),
+                Vec3::new(0.22, 2.8, 1.2),
+            )),
+        );
+        let start = Vec2::new(-3.2, 0.0);
+        let target = Vec2::new(3.2, 0.0);
+        let mut route = Vec::new();
+        assert!(nav.route(start, target, false, &mut route));
+        assert!(nav.uses_narrow_crossing(start, &route));
+        assert!(!nav.route(start, target, true, &mut route));
+        let mut actor = Brain::seeded(42);
+        actor.spawn(start, std::f32::consts::FRAC_PI_2);
+        actor.hunt = Hunt::start(Tuning::default(), target, false);
+        actor.hunt.guided = true;
+        let frame = Frame {
+            nav: &nav,
+            door_closed: false,
+            points: &[],
+            noises: &[],
+            view: brain::View {
+                eye: point(target).with_y(1.62),
+                facing: Vec3::X,
+                protected: false,
+            },
+        };
+        let mut on_foot = false;
+        for _ in 0..780 {
+            let before = actor.pos;
+            actor.step(brain::STEP, &frame, brain::Tuning::default(), true);
+            on_foot |= actor.walking_portal();
+            assert!(nav.clear_body(before, actor.pos, HUMAN, false));
+            assert!(!actor.hunt.pending);
+            if on_foot && actor.pos.x > 0.70 {
+                break;
+            }
+        }
+        println!(
+            "portal estreito — fim={:?} continuidade_em_pé={on_foot} posição={:?}",
+            actor.hunt.end, actor.pos
+        );
+        assert_eq!(actor.hunt.end, Some(End::Narrow));
+        assert!(on_foot && actor.pos.x > 0.70);
+    }
 
     fn stage(door: bool) -> Nav {
         let gate = Aabb::from_center_size(Vec3::new(0.0, 1.35, 0.0), Vec3::new(8.0, 2.7, 0.20));
@@ -984,6 +1091,49 @@ mod tests {
         }
         assert!(matches!(b.hunt.end, Some(End::Lost | End::Route)));
         assert!(!b.hunt.pending);
+    }
+
+    #[cfg(feature = "dev-lab")]
+    #[test]
+    fn lab_profiles_compare_sprint_escape_with_and_without_a_closed_door() {
+        use super::super::hunt_lab::HuntProfile;
+        let nav = stage(true);
+        for profile in [
+            HuntProfile::Base,
+            HuntProfile::Moderate,
+            HuntProfile::Intense,
+        ] {
+            let tuning = profile.tuning();
+            for door in [false, true] {
+                let mut b = begin(Vec2::new(0.0, -1.0), false);
+                b.hunt = Hunt::start(tuning, Vec2::new(0.0, -1.0), false);
+                let mut z = -1.0_f32;
+                let mut closed = false;
+                let mut elapsed = 0.0;
+                for _ in 0..1_860 {
+                    if b.hunt.phase == Phase::Run {
+                        z = (z + 4.5 * brain::STEP).min(47.0);
+                    }
+                    closed |= door && z >= 0.85;
+                    let from = b.pos;
+                    b.step(brain::STEP, &rehearsal(&nav, z, closed), default(), true);
+                    elapsed += brain::STEP;
+                    assert!(b.pos.distance(from) <= (tuning.speed + 0.01) * brain::STEP);
+                    assert!(nav.clear_body(from, b.pos, HUMAN, closed));
+                    if b.hunt.end.is_some() {
+                        break;
+                    }
+                }
+                println!(
+                    "perfil={profile:?} porta={door} fim={:?} tempo={elapsed:.2}s pico={:.2} m/s",
+                    b.hunt.end, b.hunt.peak
+                );
+                assert!(b.hunt.end.is_some());
+                if door {
+                    assert!(closed && !b.hunt.pending);
+                }
+            }
+        }
     }
 
     #[test]

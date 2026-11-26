@@ -1,16 +1,23 @@
 mod brain;
 mod cognition;
-pub(super) mod cognition_qa;
+#[cfg(feature = "dev-lab")]
+pub(crate) mod cognition_qa;
 pub(crate) mod hunt;
+#[cfg(feature = "dev-lab")]
 mod hunt_lab;
-pub(super) mod hunt_qa;
+#[cfg(feature = "dev-lab")]
+pub(crate) mod hunt_qa;
 mod nav;
-pub(super) mod qa;
-pub(super) mod scenario;
+#[cfg(feature = "dev-lab")]
+pub(crate) mod qa;
+#[cfg(feature = "dev-lab")]
+pub(crate) mod scenario;
+pub(crate) mod strategy;
 mod tactics;
+#[cfg(feature = "dev-lab")]
 mod test_lab;
 
-use super::{library::Catalog, motion};
+use super::{motion, rig::Catalog};
 use crate::{
     app::{CollisionWorld, LocalPlayer, Screen, Session},
     atmosphere::{
@@ -25,14 +32,22 @@ use crate::{
 use ainda_vivo_core::{collision::Aabb, story::Action};
 use bevy::prelude::*;
 pub(crate) use brain::State;
-use brain::{Brain, Frame, Noise, Tuning, View, angle, forward, player_sees};
-pub(super) use hunt_lab::{HuntCommand, HuntKnob, diagnostics as hunt_diagnostics, hunt_command};
+#[cfg(feature = "dev-lab")]
+use brain::forward;
+use brain::{Brain, Frame, Noise, Tuning, View, angle, player_sees};
+#[cfg(feature = "dev-lab")]
+pub(crate) use hunt_lab::{
+    HuntCommand, HuntKnob, HuntProfile, diagnostics as hunt_diagnostics, hunt_command,
+};
 use nav::{HUMAN, Nav, Portal, Zone, point};
-pub(super) use scenario::BotStyle;
-pub(super) use test_lab::{Command, Knob, TestLab, command, update_lab};
+#[cfg(feature = "dev-lab")]
+pub(crate) use scenario::BotStyle;
+use strategy::{Delivery, Illusion};
+#[cfg(feature = "dev-lab")]
+pub(crate) use test_lab::{Command, Knob, TestLab, command, update_lab};
 
 #[derive(Component, Clone, Copy)]
-pub(super) struct Pose {
+pub(crate) struct Pose {
     pub clip: u8,
     pub sample: Option<f32>,
     pub speed: f32,
@@ -54,7 +69,7 @@ impl Pose {
     }
 }
 
-fn presentation(brain: &Brain, lab: bool, paused: bool) -> Pose {
+pub(crate) fn presentation(brain: &Brain, lab: bool, paused: bool) -> Pose {
     let mut pose = Pose {
         paused,
         ..Pose::new(lab)
@@ -108,6 +123,75 @@ const STATION_ANCHORS: [Vec2; 17] = [
     Vec2::new(0.0, -89.5),
 ];
 
+#[derive(Clone, Copy, Debug)]
+#[repr(usize)]
+pub(crate) enum HuntReject {
+    Absent,
+    Protected,
+    Busy,
+    NoSight,
+    Posture,
+    Range,
+    TooEarly,
+    Mission,
+    Strain,
+    Escape,
+    Cooldown,
+    Pacing,
+    Recent,
+    Draw,
+}
+
+impl HuntReject {
+    const ALL: [Self; 14] = [
+        Self::Absent,
+        Self::Protected,
+        Self::Busy,
+        Self::NoSight,
+        Self::Posture,
+        Self::Range,
+        Self::TooEarly,
+        Self::Mission,
+        Self::Strain,
+        Self::Escape,
+        Self::Cooldown,
+        Self::Pacing,
+        Self::Recent,
+        Self::Draw,
+    ];
+}
+
+#[derive(Default)]
+struct Opportunities {
+    next: f32,
+    rejected: [u32; HuntReject::ALL.len()],
+    accepted: u32,
+    bluff: u32,
+    runs: u32,
+    contacts: u32,
+}
+
+/// Messages in this channel disclose presentation state only. The audio system
+/// may inspect the listener. No position or response travels back to the brain.
+#[derive(Clone, Copy, Message)]
+pub(crate) struct PerceptionOrder {
+    pub stamp: (u64, u32),
+    pub id: u32,
+    pub kind: Illusion,
+    pub sector: u8,
+    pub actor_sector: u8,
+    pub intensity: f32,
+    pub earliest: f32,
+    pub deadline: f32,
+}
+
+#[derive(Clone, Copy, Message)]
+pub(crate) struct PerceptionReceipt {
+    pub stamp: (u64, u32),
+    pub id: u32,
+    pub delivery: Delivery,
+}
+
 #[derive(Resource, Default)]
 pub(crate) struct Campaign {
     requested: bool,
@@ -124,19 +208,83 @@ pub(crate) struct Campaign {
     gate_was_open: Option<bool>,
     retry: f32,
     catalog_revision: u32,
+    opportunities: Opportunities,
+    witnessed_for: f32,
+    witness_at: f32,
+    witnessed: bool,
+    sustained: bool,
+    tracing: bool,
+    plans_traced: (u32, u32),
     pub(super) max_travel: f32,
     pub(super) started: u32,
 }
 
 impl Campaign {
-    pub(super) fn new(requested: bool) -> Self {
+    pub(crate) fn new(requested: bool) -> Self {
         Self {
             requested,
+            tracing: std::env::args().any(|argument| argument == "--trace-presence"),
             ..default()
         }
     }
     pub(crate) fn physical(&self) -> bool {
         self.selected
+    }
+
+    pub(crate) fn supports(&self, order: PerceptionOrder) -> bool {
+        self.active()
+            && self.attempt == order.stamp
+            && self.brain.mind.waiting_for(order.id)
+            && self.nav.as_ref().and_then(|nav| nav.sector(self.brain.pos))
+                != Some(order.sector as usize)
+    }
+
+    pub(crate) fn trace_enabled(&self) -> bool {
+        self.tracing
+    }
+
+    pub(crate) fn qa_counts(&self) -> (u32, u32, u32) {
+        (
+            self.started,
+            self.opportunities.runs,
+            self.brain.mind.finished,
+        )
+    }
+
+    pub(crate) fn report(&self) -> String {
+        use std::fmt::Write;
+        let o = &self.opportunities;
+        let mut data = format!(
+            "physical={} manifests={} accepted={} bluffs={} runs={} contacts={} plans={:?} finished={}\n",
+            self.physical(),
+            self.started,
+            o.accepted,
+            o.bluff,
+            o.runs,
+            o.contacts,
+            self.brain.mind.totals,
+            self.brain.mind.finished
+        );
+        for reason in HuntReject::ALL {
+            let _ = writeln!(data, "reject {reason:?} {}", o.rejected[reason as usize]);
+        }
+        let _ = writeln!(
+            data,
+            "buffers_astar_bytes={} route_replans={} blocks={} recovered={}",
+            self.brain.route.bytes(),
+            self.brain.memory.replans,
+            self.brain.memory.blocked,
+            self.brain.memory.recovered
+        );
+        for item in self.brain.memory.episodes.iter().flatten().take(4) {
+            let _ = writeln!(
+                data,
+                "episódio {:.2}s setor={:?} {}",
+                item.when, item.sector, item.reason
+            );
+        }
+        data.push_str(&self.brain.mind.report(self.brain.clock));
+        data
     }
     pub(crate) fn active(&self) -> bool {
         self.selected && self.brain.state != State::Absent
@@ -262,8 +410,8 @@ impl Footstep {
     }
 }
 
-pub(crate) fn legacy(mode: Option<Res<Campaign>>) -> bool {
-    mode.is_none_or(|mode| !mode.physical())
+pub(crate) fn legacy(mode: Res<Campaign>, catalog: Res<Catalog>) -> bool {
+    !mode.physical() && (!mode.requested || catalog.error.is_some())
 }
 
 fn station_nav(world: &CollisionWorld) -> Nav {
@@ -316,8 +464,27 @@ fn anchor(f: &Frame, order: usize) -> Option<(Vec2, f32)> {
             distance(a).total_cmp(&distance(b))
         })
         .map(|p| {
-            // A orientação inicial é a do posto escolhido, em direções cardeais.
-            let yaw = ((order % 4) as f32) * std::f32::consts::FRAC_PI_2;
+            // The staging camera chooses hiding space. Orientation comes only
+            // from that post's exits and its static sightlines.
+            let yaw = f
+                .nav
+                .sector(p)
+                .and_then(|sector| {
+                    f.nav
+                        .exits(sector, f.door_closed)
+                        .map(|(_, exit)| exit)
+                        .filter(|&exit| {
+                            f.nav.clear(
+                                point(p).with_y(1.80),
+                                point(exit).with_y(1.62),
+                                f.door_closed,
+                            )
+                        })
+                        .min_by(|a, b| p.distance_squared(*a).total_cmp(&p.distance_squared(*b)))
+                })
+                .map_or(((order % 4) as f32) * std::f32::consts::FRAC_PI_2, |exit| {
+                    angle(exit - p)
+                });
             (p, yaw)
         })
 }
@@ -325,10 +492,14 @@ fn anchor(f: &Frame, order: usize) -> Option<(Vec2, f32)> {
 #[derive(bevy::ecs::system::SystemParam)]
 pub(super) struct Context<'w, 's> {
     session: ResMut<'w, Session>,
+    #[cfg(feature = "dev-lab")]
+    lab: Option<Res<'w, crate::lab::Lab>>,
     atmosphere: Res<'w, Atmosphere>,
+    comfort: Res<'w, crate::app::Comfort>,
     silhouette: Res<'w, Presence>,
     world: Res<'w, CollisionWorld>,
     player: Res<'w, LocalPlayer>,
+    #[cfg(feature = "dev-lab")]
     keys: Res<'w, ButtonInput<KeyCode>>,
     poses: Query<
         'w,
@@ -341,7 +512,10 @@ pub(super) struct Context<'w, 's> {
     >,
     signals: MessageWriter<'w, hunt::Signal>,
     relay: MessageWriter<'w, RelayClick>,
+    #[cfg(feature = "dev-lab")]
     hunt_qa: Option<Res<'w, hunt_qa::Check>>,
+    orders: MessageWriter<'w, PerceptionOrder>,
+    receipts: MessageReader<'w, 's, PerceptionReceipt>,
 }
 
 pub(super) fn update_campaign(
@@ -352,7 +526,8 @@ pub(super) fn update_campaign(
     time: Res<Time>,
     mut ctx: Context,
 ) {
-    if ctx.keys.just_pressed(KeyCode::F5) {
+    #[cfg(feature = "dev-lab")]
+    if ctx.lab.is_some() && ctx.keys.just_pressed(KeyCode::F5) {
         mode.requested = !mode.requested;
         info!("Presença física solicitada: {}", mode.requested);
     }
@@ -360,8 +535,7 @@ pub(super) fn update_campaign(
     let distinct = (session.attempt, session.perception_revision);
     if mode.attempt != distinct {
         mode.attempt = distinct;
-        mode.brain = Brain::seeded(director.initial_seed() ^ 0x72ea_71cc);
-        mode.brain.next_manifest = 12.0;
+        mode.brain = Brain::campaign(director.initial_seed() ^ 0x72ea_71cc);
         mode.noise.clear();
         mode.footstep = Footstep::default();
         mode.relay = Relay::default();
@@ -370,6 +544,12 @@ pub(super) fn update_campaign(
         mode.retry = 0.0;
         mode.last_manifest = None;
         mode.gate_was_open = None;
+        mode.opportunities = Opportunities::default();
+        mode.witnessed_for = 0.0;
+        mode.witness_at = 0.0;
+        mode.witnessed = false;
+        mode.sustained = false;
+        mode.plans_traced = (0, 0);
     }
     if mode.requested && !mode.selected && !ctx.silhouette.active() && catalog.number(12).is_some()
     {
@@ -393,8 +573,9 @@ pub(super) fn update_campaign(
             pose.paused = true;
             if session.screen != Screen::Paused {
                 *show = Visibility::Hidden;
-                mode.brain = Brain::seeded(director.initial_seed() ^ 0x72ea_71cc);
-                mode.brain.next_manifest = 12.0;
+                if mode.brain.state != State::Absent {
+                    mode.brain.state = State::Absent;
+                }
             }
         }
         return;
@@ -458,6 +639,15 @@ pub(super) fn update_campaign(
         points: &STATION_ANCHORS,
     };
     let brain = &mut mode.brain;
+    for receipt in ctx
+        .receipts
+        .read()
+        .filter(|message| message.stamp == distinct)
+    {
+        brain
+            .mind
+            .feedback(receipt.id, receipt.delivery, brain.clock);
+    }
     if brain.state == State::Absent
         && brain.clock >= brain.next_manifest
         && brain.clock >= mode.retry
@@ -471,47 +661,85 @@ pub(super) fn update_campaign(
             director.claim(Cue::Presence, session.elapsed);
             mode.last_manifest = Some(session.elapsed);
             mode.started += 1;
+            mode.witnessed_for = 0.0;
+            mode.witnessed = false;
+            mode.sustained = false;
         }
     }
-    if !brain.hunt.active()
-        && mode.requested
-        && !protected
-        && !safe_post
-        && brain.state == State::Watch
-        && brain.visible
-        && brain.clock - brain.entered > 0.70
-        && let Some(memory) = brain.seen
-        && (7.0..15.0).contains(&brain.pos.distance(memory.at))
-        && session.elapsed >= 56.0
-        && hunt::motor_clear(
-            &frame,
-            brain.pos,
-            brain.pos,
-            brain.yaw,
-            angle(memory.at - brain.pos),
-        )
-        && let Some((prepare, bluff)) = director.hunt_window(
-            session.elapsed,
-            session.progress().phase(),
-            session.psychology.value(),
-            player.body.velocity.xz().length(),
-            escape_available(&frame, feet.xz(), brain.pos),
-        )
-    {
-        brain.change(State::Threaten, "início da ameaça", prepare, None);
-        brain.hunt = hunt::Hunt::start(
-            hunt::Tuning {
-                prepare,
-                ..default()
-            },
-            memory.at,
-            bluff,
-        );
+    let now = session.elapsed;
+    if now >= mode.opportunities.next && mode.requested {
+        mode.opportunities.next = now + 0.35;
+        let assessment = opportunity(brain, &frame, protected || safe_post).and_then(|clue| {
+            director
+                .hunt_window(
+                    now,
+                    session.progress().phase(),
+                    session.psychology.value(),
+                    clue.velocity.length(),
+                    escape_available(&frame, feet.xz(), brain.pos),
+                )
+                .map(|(prepare, bluff)| (clue, prepare, bluff))
+        });
+        match assessment {
+            Ok((clue, prepare, bluff)) => {
+                mode.opportunities.accepted += 1;
+                mode.opportunities.bluff += u32::from(bluff);
+                if mode.tracing {
+                    info!(
+                        "CAÇA {now:.2}s aceita blefe={bluff} distância={:.1}",
+                        brain.pos.distance(clue.at)
+                    );
+                }
+                brain.mind.hunting(brain.clock);
+                brain.change(State::Threaten, "início da ameaça", prepare, None);
+                brain.hunt = hunt::Hunt::start(
+                    hunt::Tuning {
+                        prepare,
+                        ..default()
+                    },
+                    clue.at,
+                    bluff,
+                );
+            }
+            Err(reason) => {
+                let count = &mut mode.opportunities.rejected[reason as usize];
+                *count += 1;
+                if mode.tracing && (*count == 1 || count.is_multiple_of(25)) {
+                    info!("CAÇA {now:.2}s recusada {reason:?} (n={count})");
+                }
+            }
+        }
     }
     let in_presence = brain.state != State::Absent;
+    let was_running = brain.hunt.phase == hunt::Phase::Run;
     brain.step(dt, &frame, Tuning::default(), true);
+    if !was_running && brain.hunt.phase == hunt::Phase::Run {
+        mode.opportunities.runs += 1;
+    }
+    if let Some(order) = brain.mind.request() {
+        ctx.orders.write(PerceptionOrder {
+            stamp: distinct,
+            id: order.id,
+            kind: order.kind,
+            sector: order.sector as u8,
+            actor_sector: order.actor_sector as u8,
+            intensity: order.intensity,
+            earliest: now + 0.08,
+            deadline: now + 2.25,
+        });
+    }
+    let plans = (brain.mind.totals.iter().sum(), brain.mind.finished);
+    if mode.tracing && mode.plans_traced != plans {
+        info!("ESTRATÉGIA {now:.2}s {}", brain.mind.report(brain.clock));
+        mode.plans_traced = plans;
+    }
     if std::mem::take(&mut brain.hunt.pending) {
-        let selected = if ctx.hunt_qa.is_some() {
+        mode.opportunities.contacts += 1;
+        #[cfg(feature = "dev-lab")]
+        let forced = ctx.hunt_qa.is_some();
+        #[cfg(not(feature = "dev-lab"))]
+        let forced = false;
+        let selected = if forced {
             hunt::Contact::Capture
         } else {
             director.hunt_contact(session.expedition.can_capture(), session.psychology.value())
@@ -552,6 +780,41 @@ pub(super) fn update_campaign(
     if in_presence {
         mode.max_travel += was.distance(brain.pos).min(dt * 2.0);
     }
+    if now >= mode.witness_at {
+        mode.witness_at = now + 0.10;
+        let range = if ctx.comfort.flashlight {
+            17.0_f32
+        } else {
+            9.0
+        };
+        let witnesses = brain.state != State::Absent
+            && !brain.hunt.hidden()
+            && !protected
+            && brain.pos.distance_squared(feet.xz()) < range.powi(2)
+            && player_sees(&frame, brain.eye());
+        if witnesses {
+            mode.witnessed_for += 0.10;
+            if !mode.witnessed && mode.witnessed_for >= 0.35 {
+                mode.witnessed = true;
+                session.memory_mut().note_sighting(now);
+                session.stimulate(
+                    ainda_vivo_core::psychology::Stimulus::Sighting,
+                    ainda_vivo_core::psychology::Origin::Presence,
+                    0.45,
+                );
+            }
+            if !mode.sustained && mode.witnessed_for >= 2.25 {
+                mode.sustained = true;
+                session.stimulate(
+                    ainda_vivo_core::psychology::Stimulus::Gaze,
+                    ainda_vivo_core::psychology::Origin::Presence,
+                    0.37,
+                );
+            }
+        } else {
+            mode.witnessed_for = 0.0;
+        }
+    }
     mode.noise.clear();
     if brain.state == State::Absent {
         if let Some(id) = mode.actor
@@ -580,6 +843,46 @@ pub(super) fn update_campaign(
     }
 }
 
+fn opportunity(brain: &Brain, frame: &Frame, protected: bool) -> Result<brain::Memory, HuntReject> {
+    use HuntReject::*;
+    if brain.state == State::Absent {
+        return Err(Absent);
+    }
+    if protected {
+        return Err(Protected);
+    }
+    if brain.hunt.active()
+        || brain.walking_portal()
+        || brain.mind.active() && !brain.mind.permit_hunt()
+    {
+        return Err(Busy);
+    }
+    let Some(clue) = brain
+        .seen
+        .filter(|m| brain.visible && m.age(brain.clock) < 0.22)
+    else {
+        return Err(NoSight);
+    };
+    if !(5.5..17.2).contains(&brain.pos.distance(clue.at)) {
+        return Err(Range);
+    }
+    if !matches!(
+        brain.state,
+        State::Watch | State::Approach | State::Threaten | State::Follow
+    ) || brain.clock - brain.entered < 0.45
+        || !hunt::motor_clear(
+            frame,
+            brain.pos,
+            brain.pos,
+            brain.yaw,
+            angle(clue.at - brain.pos),
+        )
+    {
+        return Err(Posture);
+    }
+    Ok(clue)
+}
+
 fn escape_available(frame: &Frame, player: Vec2, threat: Vec2) -> bool {
     let half = Vec3::new(0.27, 0.91, 0.27);
     let away = (player - threat).normalize_or_zero();
@@ -606,6 +909,42 @@ fn escape_available(frame: &Frame, player: Vec2, threat: Vec2) -> bool {
 #[cfg(test)]
 mod relay_tests {
     use super::*;
+
+    #[test]
+    fn access_portals_are_classified_from_actual_station_colliders() {
+        use crate::scene::station::plan::Sector::{Access, Dock, Records};
+        let mut app = App::new();
+        app.init_resource::<Assets<Mesh>>()
+            .init_resource::<Assets<StandardMaterial>>()
+            .init_resource::<Assets<Image>>()
+            .init_resource::<CollisionWorld>()
+            .add_systems(Startup, crate::scene::setup);
+        app.update();
+        let nav = station_nav(app.world().resource::<CollisionWorld>());
+        let half_low = Vec3::new(nav::LOW.z, nav::LOW.y, nav::LOW.x);
+        for sector in [Dock, Records] {
+            let p = PORTALS
+                .iter()
+                .find(|p| p.rooms == [Access, sector])
+                .unwrap();
+            let mut pair = None;
+            for sample in -8..=8 {
+                let center = p.at + Vec2::Y * (p.width * 0.44 * sample as f32 / 8.0);
+                let start = center - Vec2::X * 1.12;
+                let goal = center + Vec2::X * 1.12;
+                assert!(!nav.clear_body(start, goal, half_low, false));
+                if nav.clear_body(start, goal, HUMAN, false) {
+                    pair = Some((start, goal));
+                }
+            }
+            let (start, goal) = pair.expect("deve existir uma passagem em pé");
+            let mut route = Vec::new();
+            assert!(nav.uses_narrow_crossing(start, &[goal]));
+            assert!(nav.route(start, goal, false, &mut route));
+            assert!(nav.uses_narrow_crossing(start, &route));
+            println!("Acesso/{sector:?}: rota em pé de {start:?} a {goal:?} {route:?}");
+        }
+    }
 
     #[test]
     fn relay_click_is_delayed_and_cannot_be_rearmed_during_cooldown() {

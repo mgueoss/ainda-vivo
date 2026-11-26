@@ -12,7 +12,7 @@ use bevy::{
 use std::path::PathBuf;
 
 #[derive(Resource)]
-pub(in crate::lab) struct Check {
+pub(crate) struct Check {
     tick: u32,
     frame: u32,
     report: Option<PathBuf>,
@@ -51,7 +51,7 @@ impl Check {
     }
 }
 
-pub(in crate::lab) fn keys(check: Option<Res<Check>>, mut keys: ResMut<ButtonInput<KeyCode>>) {
+pub(crate) fn keys(check: Option<Res<Check>>, mut keys: ResMut<ButtonInput<KeyCode>>) {
     if let Some(check) = check {
         if matches!(check.frame, 4 | 8) {
             keys.press(KeyCode::F5);
@@ -81,7 +81,7 @@ fn photo(options: &Options, commands: &mut Commands, name: &str) {
 }
 
 #[derive(bevy::ecs::system::SystemParam)]
-pub(in crate::lab) struct Game<'w, 's> {
+pub(crate) struct Game<'w, 's> {
     session: ResMut<'w, Session>,
     player: ResMut<'w, LocalPlayer>,
     comfort: ResMut<'w, Comfort>,
@@ -93,7 +93,7 @@ pub(in crate::lab) struct Game<'w, 's> {
     clippy::too_many_arguments,
     reason = "Independent renderer and test resources."
 )]
-pub(in crate::lab) fn verify(
+pub(crate) fn verify(
     check: ResMut<Check>,
     catalog: Res<Catalog>,
     lab: Res<Lab>,

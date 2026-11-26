@@ -1,5 +1,13 @@
 # Changelog
 
+## v0.0.12-dev.7 — Guerra Psicológica
+
+- A Presença 3D passa a operar também na edição comum. A silhueta continua disponível para comparação. A campanha física tem um roteiro de validação próprio.
+- A Presença alterna desvio de atenção, interceptação, falsa retirada, emboscada, ameaça enganosa e investigação. Resultados recentes influenciam as prioridades e perdem força com o tempo.
+- O diretor pode aceitar pedidos de distração ou ameaça sonora em setores vizinhos. A criatura julga o resultado a partir daquilo que consegue perceber. O relé temporizado continua disponível como distração física do operador.
+- Passagens estreitas podem encerrar a corrida em busca por uma rota em pé. Preferências são gravadas em segundo plano com novas tentativas após falhas. Cada registro de sessão tem limite de tamanho e retenção.
+- O Dev Lab ganhou controles de planejamento, reações simuladas, comparação de três perfis de caçada e exportação. O ZIP experimental oferece atalhos pelo inicializador universal. [Estratégias](docs/GUERRA-PSICOLOGICA-v0.0.12-dev.7.md) · [Validação](docs/VALIDACAO-v0.0.12-dev.7.md) · [Handoff](AINDA-VIVO-HANDOFF-v0.0.12-dev.7.md)
+
 ## v0.0.12-dev.6 — Inteligência Hostil
 
 - A Presença atualiza aproximações laterais, procura pontos alcançáveis junto a equipamentos e confirma contato com a posição física do operador. Abaixa o ritmo ao perder contato, investiga o último indício e pode retomar a mesma caçada.

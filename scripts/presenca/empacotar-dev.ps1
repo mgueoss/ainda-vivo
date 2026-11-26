@@ -1,7 +1,8 @@
 param(
     [Parameter(Mandatory)] [string]$GameExe,
     [Parameter(Mandatory)] [string]$NoticesFile,
-    [Parameter(Mandatory)] [string]$OutputDirectory
+    [Parameter(Mandatory)] [string]$OutputDirectory,
+    [string]$Launcher
 )
 $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
@@ -10,6 +11,12 @@ $root = Split-Path -Parent (Split-Path -Parent $PSScriptRoot)
 $line = Select-String -LiteralPath (Join-Path $root 'Cargo.toml') -Pattern '^version = "([0-9]+\.[0-9]+\.[0-9]+-dev\.[0-9]+)"$' | Select-Object -First 1
 if (-not $line) { throw 'O manifesto precisa identificar uma versão experimental -dev.' }
 $version = $line.Matches[0].Groups[1].Value
+if ($Launcher) {
+    $portable = Join-Path $root 'scripts/distribution/package.ps1'
+    & $portable -Launcher $Launcher -NoticesFile $NoticesFile -OutputDirectory $OutputDirectory `
+        -Version $version -GameExe $GameExe -DevLabShortcuts
+    return
+}
 $exe = (Resolve-Path -LiteralPath $GameExe).ProviderPath
 $notices = (Resolve-Path -LiteralPath $NoticesFile).ProviderPath
 $target = [IO.Path]::GetFullPath($OutputDirectory)
@@ -28,7 +35,8 @@ $archive = [IO.Compression.ZipFile]::Open($archivePath, [IO.Compression.ZipArchi
 try {
     [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $exe, 'ainda-vivo.exe', [IO.Compression.CompressionLevel]::Optimal) | Out-Null
     [IO.Compression.ZipFileExtensions]::CreateEntryFromFile($archive, $notices, 'LICENCAS.txt') | Out-Null
-    Add-Text $archive 'ABRIR DEV LAB.cmd' "@echo off`r`nstart `"`" `"%~dp0ainda-vivo.exe`" --dev-lab --presence-physical`r`n" ([Text.Encoding]::ASCII)
+    Add-Text $archive 'JOGAR.cmd' "@echo off`r`nstart `"`" `"%~dp0ainda-vivo.exe`"`r`n" ([Text.Encoding]::ASCII)
+    Add-Text $archive 'ABRIR DEV LAB.cmd' "@echo off`r`nstart `"`" `"%~dp0ainda-vivo.exe`" --dev-lab`r`n" ([Text.Encoding]::ASCII)
     $readme = @"
 AINDA VIVO v$version
 Windows x64 • Build experimental do Dev Lab da Presença
@@ -42,7 +50,7 @@ Fora do laboratório, F5
 solicita a troca entre a representação anterior e a Presença física.
 Para ensaiar corrida, retirada e contato, abra Caçada > Caçada livre.
 Em Som, experimente Porta e Repetir, Corrida física e Caçada invisível.
-Para testar a criatura física na campanha, execute o jogo com --presence-physical.
+A Presença física é padrão na campanha. Use JOGAR.cmd na execução normal.
 Para colocar a Presença 3D passiva no corredor inicial, execute
 .\ainda-vivo.exe --dev-lab --lab-campaign-preview pelo terminal.
 

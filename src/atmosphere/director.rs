@@ -18,7 +18,7 @@ pub enum Mood {
     Relief,
     Unease,
     Anticipation,
-    #[cfg(feature = "dev-lab")]
+
     Climax,
 }
 
@@ -90,15 +90,14 @@ pub struct Director {
     history: [Option<Beat>; 6],
     requested: Option<Cue>,
     quiet_until: f32,
-    #[cfg(feature = "dev-lab")]
+
     hunt_after: f32,
-    #[cfg(feature = "dev-lab")]
+
     hunt_focus: u8,
-    #[cfg(feature = "dev-lab")]
+
     acoustic: AcousticPacing,
 }
 
-#[cfg(feature = "dev-lab")]
 #[derive(Default)]
 struct AcousticPacing {
     until: f32,
@@ -109,7 +108,6 @@ struct AcousticPacing {
 }
 
 impl Director {
-    #[cfg(feature = "dev-lab")]
     pub(crate) fn hunt_window(
         &mut self,
         now: f32,
@@ -117,42 +115,68 @@ impl Director {
         strain: f32,
         speed: f32,
         escape: bool,
-    ) -> Option<(f32, bool)> {
-        if now < 56.0
-            || now < self.hunt_after
-            || phase < Phase::Electrical
-            || strain >= 78.0
-            || !escape
-            || now < self.quiet_until
+    ) -> Result<(f32, bool), crate::presence::observer::HuntReject> {
+        use crate::presence::observer::HuntReject::*;
+        if now < 36.0 {
+            return Err(TooEarly);
+        }
+        if phase < Phase::Electrical {
+            return Err(Mission);
+        }
+        if strain >= 76.0 {
+            return Err(Strain);
+        }
+        if !escape {
+            return Err(Escape);
+        }
+        if now < self.hunt_after {
+            return Err(Cooldown);
+        }
+        if now < self.quiet_until
             || self.hunt_focus > 0
             || now < self.acoustic.until
             || self.pressure > 0.67
         {
-            return None;
+            return Err(Pacing);
         }
-        self.hunt_after = now + 22.0;
+        self.hunt_after = now + 15.0;
         let recent = self
             .history
             .iter()
             .flatten()
             .filter(|beat| now - beat.at < 28.0 && beat.cue == Cue::Presence)
             .count();
-        let chance = if speed > 2.7 { 0.47 } else { 0.30 };
-        if recent > 1 || self.random() > chance {
-            return None;
+        let chance = if speed > 2.7 { 0.49 } else { 0.38 };
+        if recent > 1 {
+            return Err(Recent);
+        }
+        if self.random() > chance {
+            return Err(Draw);
         }
         self.hunt_after = now + 115.0 + self.random() * 48.0;
         let prepare = 1.65 + self.random() * 1.35;
-        Some((prepare, self.random() < 0.38))
+        Ok((prepare, self.random() < 0.36))
     }
 
-    #[cfg(feature = "dev-lab")]
+    pub(crate) fn strategic_acoustic_available(&self, now: f32) -> bool {
+        now >= self.quiet_until
+            && now >= self.acoustic.until
+            && now >= self.acoustic.rest_until
+            && self.hunt_focus == 0
+            && self.pressure < 0.55
+            && self.last_event.is_none_or(|(at, _)| now - at >= 6.0)
+            && self
+                .window
+                .as_ref()
+                .is_none_or(|w| w.first == Some(Cue::Sound))
+    }
+
     pub(crate) fn hunt_contact(
         &mut self,
         eligible: bool,
         strain: f32,
-    ) -> crate::lab::observer::hunt::Contact {
-        crate::lab::observer::hunt::select_contact(self.random(), eligible, strain)
+    ) -> crate::presence::observer::hunt::Contact {
+        crate::presence::observer::hunt::select_contact(self.random(), eligible, strain)
     }
 
     fn new(attempt: u64, seed: u32) -> Self {
@@ -199,7 +223,6 @@ impl Director {
     }
 
     pub fn allows(&self, cue: Cue, now: f32) -> bool {
-        #[cfg(feature = "dev-lab")]
         if now < self.acoustic.until || now < self.acoustic.rest_until {
             return false;
         }
@@ -258,7 +281,6 @@ impl Director {
         debug!("Diretor: {cue:?} em {now:.2}s");
     }
 
-    #[cfg(feature = "dev-lab")]
     pub(crate) fn acoustic_available(&self, now: f32, diversion: bool) -> bool {
         self.hunt_focus == 0
             && now >= self.quiet_until
@@ -271,7 +293,6 @@ impl Director {
                     && self.last_event.is_none_or(|(at, _)| now - at > 19.0))
     }
 
-    #[cfg(feature = "dev-lab")]
     pub(crate) fn begin_acoustic(&mut self, now: f32, purpose: &'static str) {
         self.record_beat(Cue::Sound, now);
         self.acoustic.until = now + 12.0;
@@ -280,13 +301,11 @@ impl Director {
         self.set_mood(Mood::Suspicion);
     }
 
-    #[cfg(feature = "dev-lab")]
     pub(crate) fn acoustic_stage(&mut self, stage: &'static str, mood: Mood) {
         self.acoustic.stage = stage;
         self.set_mood(mood);
     }
 
-    #[cfg(feature = "dev-lab")]
     pub(crate) fn settle_acoustic(&mut self, now: f32, reaction: &'static str, rest: f32) {
         self.acoustic.until = 0.0;
         self.acoustic.rest_until = now + rest;
@@ -319,7 +338,6 @@ impl Director {
         )
     }
 
-    #[cfg(feature = "dev-lab")]
     fn follow_hunt(&mut self, now: f32, motion: u8) {
         if motion > 0 {
             self.window = None;
@@ -345,7 +363,7 @@ impl Director {
             Mood::Suspicion => 0.25,
             Mood::Anticipation => 0.30,
             Mood::Tension => 0.38,
-            #[cfg(feature = "dev-lab")]
+
             Mood::Climax => 0.42,
         };
         self.hush += (target - self.hush) * (1.0 - (-1.9 * dt).exp());
@@ -378,7 +396,7 @@ impl Director {
             let after_recovery = self.last_event.map_or(0.0, |(time, _)| time + 5.4);
             self.next_window = self.next_window.min((now + 2.4).max(after_recovery));
         }
-        #[cfg(feature = "dev-lab")]
+
         if now < self.acoustic.until {
             return;
         } else if now < self.acoustic.rest_until {
@@ -486,7 +504,7 @@ pub fn update(
     (presence, threat, illusions): (Res<Presence>, Res<Threat>, Res<Illusions>),
     (smoke, developer): (Res<SmokeTest>, Res<Developer>),
     mut director: ResMut<Director>,
-    #[cfg(feature = "dev-lab")] physical: Option<Res<crate::lab::observer::Campaign>>,
+    physical: Option<Res<crate::presence::observer::Campaign>>,
 ) {
     if session.attempt != director.attempt {
         let seed = if let Some(seed) = developer.seed {
@@ -516,7 +534,7 @@ pub fn update(
         director.requested = None;
         director.quiet_until = session.elapsed + 7.0;
         director.set_mood(Mood::Relief);
-        #[cfg(feature = "dev-lab")]
+
         {
             director.acoustic = AcousticPacing::default();
             director.hunt_focus = 0;
@@ -536,10 +554,8 @@ pub fn update(
         .observer()
         .distortion_ready(session.elapsed);
     let memory = session.memory();
-    #[cfg(feature = "dev-lab")]
+
     let physical_active = physical.as_ref().is_some_and(|mode| mode.active());
-    #[cfg(not(feature = "dev-lab"))]
-    let physical_active = false;
     let echo_ready = memory.echo_pattern(session.elapsed, distorted).is_some()
         && session.progress().phase() >= Phase::Electrical
         && crate::atmosphere::sound::service_source(player.body.feet, player.yaw).is_some();
@@ -574,7 +590,7 @@ pub fn update(
         },
         time.delta_secs(),
     );
-    #[cfg(feature = "dev-lab")]
+
     director.follow_hunt(
         session.elapsed,
         physical.as_ref().map_or(0, |mode| mode.hunt_intensity()),
@@ -585,7 +601,6 @@ pub fn update(
 mod tests {
     use super::*;
 
-    #[cfg(feature = "dev-lab")]
     #[test]
     fn acoustic_sequences_and_active_hunts_reserve_the_pacing_window() {
         let mut d = Director::new(1, 48);
@@ -613,7 +628,6 @@ mod tests {
         assert!(d.quiet_until >= 112.0);
     }
 
-    #[cfg(feature = "dev-lab")]
     #[test]
     fn hunt_window_requires_progress_escape_and_a_long_interval() {
         let mut director = (1..120)
@@ -621,17 +635,18 @@ mod tests {
                 let mut candidate = Director::new(1, seed);
                 candidate
                     .hunt_window(70.0, Phase::Return, 30.0, 3.3, true)
+                    .ok()
                     .map(|_| candidate)
             })
             .expect("há seeds com oportunidade");
         assert!(
             director
                 .hunt_window(95.0, Phase::Return, 30.0, 3.3, true)
-                .is_none()
+                .is_err()
         );
         director.hunt_after = 0.0;
         for (now, phase, strain, escape) in [
-            (45.0, Phase::Return, 30.0, true),
+            (35.0, Phase::Return, 30.0, true),
             (80.0, Phase::Baseline, 30.0, true),
             (80.0, Phase::Return, 90.0, true),
             (80.0, Phase::Return, 30.0, false),
@@ -639,7 +654,7 @@ mod tests {
             assert!(
                 director
                     .hunt_window(now, phase, strain, 4.5, escape)
-                    .is_none()
+                    .is_err()
             );
         }
     }

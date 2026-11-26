@@ -36,8 +36,8 @@ pub struct Session {
     pub resting: bool,
     pub farewell: Option<f32>,
     pub critical_hint: bool,
-    #[cfg(feature = "dev-lab")]
-    pub(crate) hunt_effect: crate::lab::observer::hunt::Effect,
+
+    pub(crate) hunt_effect: crate::presence::observer::hunt::Effect,
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -63,7 +63,7 @@ impl Default for Session {
             resting: false,
             farewell: None,
             critical_hint: false,
-            #[cfg(feature = "dev-lab")]
+
             hunt_effect: default(),
         }
     }
@@ -199,7 +199,7 @@ pub fn awaken(session: &mut Session, player: &mut LocalPlayer) {
             *player = player_at_post(post);
             session.screen = Screen::Playing;
             session.perception_revision += 1;
-            #[cfg(feature = "dev-lab")]
+
             {
                 session.hunt_effect = default();
             }
@@ -344,6 +344,7 @@ pub fn restart(session: &mut Session, player: &mut LocalPlayer, comfort: &mut Co
 
 pub fn run() -> bevy::app::AppExit {
     let smoke = crate::smoke::SmokeTest::from_args();
+    let physical_smoke = smoke.campaign;
     #[cfg(feature = "dev-lab")]
     let lab = crate::lab::Options::from_args();
     info!("AINDA VIVO {VERSION}");
@@ -354,7 +355,13 @@ pub fn run() -> bevy::app::AppExit {
     let mut app = App::new();
     if smoke.enabled {
         app.insert_resource(bevy::time::TimeUpdateStrategy::ManualDuration(
-            std::time::Duration::from_secs_f64(1.0 / 60.0),
+            std::time::Duration::from_secs_f64(
+                1.0 / if physical_smoke {
+                    f64::from(crate::smoke::campaign::hz())
+                } else {
+                    60.0
+                },
+            ),
         ));
     }
     #[cfg(feature = "dev-lab")]
@@ -472,10 +479,7 @@ pub fn run() -> bevy::app::AppExit {
                 crate::scene::station::animate,
                 (
                     crate::atmosphere::director::update,
-                    #[cfg(feature = "dev-lab")]
-                    crate::scene::presence::update.run_if(crate::lab::observer::legacy),
-                    #[cfg(not(feature = "dev-lab"))]
-                    crate::scene::presence::update,
+                    crate::scene::presence::update.run_if(crate::presence::observer::legacy),
                     crate::reality::update,
                     crate::reality::tools,
                     crate::scene::illusion::update,
@@ -493,7 +497,18 @@ pub fn run() -> bevy::app::AppExit {
                 .run_if(campaign_running),
         );
     #[cfg(feature = "dev-lab")]
-    app.add_plugins(crate::atmosphere::sound::presence_audio::PresenceAudio);
+    let source = lab.path();
+    #[cfg(not(feature = "dev-lab"))]
+    let source = crate::presence::rig::EMBEDDED;
+    app.add_plugins(crate::presence::Runtime { source })
+        .add_plugins(crate::atmosphere::sound::presence_audio::PresenceAudio);
+    if physical_smoke {
+        app.init_resource::<crate::smoke::campaign::Check>()
+            .add_systems(
+                Update,
+                crate::smoke::campaign::drive.before(crate::ui::menu_input),
+            );
+    }
     #[cfg(feature = "dev-lab")]
     if lab.enabled {
         app.add_plugins(crate::lab::LabPlugin);
@@ -502,10 +517,10 @@ pub fn run() -> bevy::app::AppExit {
 }
 
 #[cfg(feature = "dev-lab")]
-use crate::lab::campaign_running;
+pub(crate) use crate::lab::campaign_running;
 
 #[cfg(not(feature = "dev-lab"))]
-fn campaign_running() -> bool {
+pub(crate) fn campaign_running() -> bool {
     true
 }
 

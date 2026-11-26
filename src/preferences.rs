@@ -1,6 +1,9 @@
 //! Local, human-readable settings. No network or new dependencies.
 use crate::app::Comfort;
-use bevy::prelude::*;
+use bevy::{
+    prelude::*,
+    tasks::{IoTaskPool, Task, block_on, poll_once},
+};
 use std::{collections::BTreeMap, path::PathBuf};
 
 #[derive(Resource)]
@@ -8,7 +11,12 @@ pub struct Preferences {
     path: Option<PathBuf>,
     saved: String,
     bindings: BTreeMap<String, KeyCode>,
+    pending: Option<SaveTask>,
+    retry_at: f64,
+    delay: f64,
 }
+
+type SaveTask = Task<(String, std::io::Result<()>)>;
 
 impl Preferences {
     pub fn load(smoke: bool) -> (Self, Comfort) {
@@ -97,6 +105,9 @@ impl Preferences {
                 path,
                 saved: String::new(),
                 bindings,
+                pending: None,
+                retry_at: 0.0,
+                delay: 1.0,
             },
             comfort,
         )
@@ -131,7 +142,32 @@ fn parse_key(value: &str) -> Option<KeyCode> {
     })
 }
 
-pub fn save(comfort: Res<Comfort>, mut preferences: ResMut<Preferences>) {
+pub fn save(comfort: Res<Comfort>, time: Res<Time<Real>>, mut preferences: ResMut<Preferences>) {
+    let now = time.elapsed_secs_f64();
+    if let Some(job) = &mut preferences.pending {
+        let Some((written, result)) = block_on(poll_once(job)) else {
+            return;
+        };
+        preferences.pending = None;
+        match result {
+            Ok(()) => {
+                preferences.saved = written;
+                preferences.delay = 1.0;
+            }
+            Err(error) => {
+                warn!(
+                    "Preferências não salvas. Nova tentativa em {:.0} s: {error}",
+                    preferences.delay
+                );
+                preferences.retry_at = now + preferences.delay;
+                preferences.delay = (preferences.delay * 2.0).min(8.0);
+                return;
+            }
+        }
+    }
+    if now < preferences.retry_at {
+        return;
+    }
     let Some(path) = preferences.path.clone() else {
         return;
     };
@@ -179,29 +215,43 @@ pub fn save(comfort: Res<Comfort>, mut preferences: ResMut<Preferences>) {
     if content == preferences.saved {
         return;
     }
-    let result = (|| -> std::io::Result<()> {
+    preferences.pending = Some(IoTaskPool::get().spawn(async move {
+        let result = write_settings(&path, &content);
+        (content, result)
+    }));
+}
+
+fn write_settings(path: &std::path::Path, content: &str) -> std::io::Result<()> {
+    let mut temporary = path.as_os_str().to_os_string();
+    temporary.push(format!(".{}.tmp", std::process::id()));
+    let temporary = PathBuf::from(temporary);
+    let result = (|| {
         if let Some(parent) = path.parent() {
             std::fs::create_dir_all(parent)?;
         }
-        std::fs::write(&path, &content)
+        std::fs::write(&temporary, content)?;
+        std::fs::rename(&temporary, path)
     })();
-    if let Err(error) = result {
-        warn!("Preferências não salvas: {error}");
+    if result.is_err() {
+        let _ = std::fs::remove_file(temporary);
     }
-    preferences.saved = content;
+    result
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
     fn path() -> PathBuf {
+        use std::sync::atomic::{AtomicU64, Ordering};
+        static NEXT_FILE: AtomicU64 = AtomicU64::new(0);
         std::env::temp_dir().join(format!(
-            "ainda-vivo-settings-{}-{}.cfg",
+            "ainda-vivo-settings-{}-{}-{}.cfg",
             std::process::id(),
             std::time::SystemTime::now()
                 .duration_since(std::time::UNIX_EPOCH)
                 .unwrap()
-                .as_nanos()
+                .as_nanos(),
+            NEXT_FILE.fetch_add(1, Ordering::Relaxed)
         ))
     }
 
@@ -211,10 +261,22 @@ mod tests {
         std::fs::write(&path, "fov=75\nsensitivity=0.0024\nbodycam=true\nvsync=false\nambience_volume=0.42\nambience_muted=true\nvhs=off\npsycho_av=0.50\npsycho_motion=false\npsycho_indicator=true\nkey.forward=Up\nkey.interact=Q\n").unwrap();
         let (preferences, comfort) = Preferences::load_from(Some(path.clone()));
         let mut app = App::new();
-        app.insert_resource(preferences)
+        app.add_plugins((bevy::app::TaskPoolPlugin::default(), bevy::time::TimePlugin))
+            .insert_resource(preferences)
             .insert_resource(comfort)
             .add_systems(Update, save);
-        app.update();
+        for _ in 0..150 {
+            app.update();
+            if !app.world().resource::<Preferences>().saved.is_empty() {
+                break;
+            }
+            std::thread::sleep(std::time::Duration::from_millis(2));
+        }
+        assert!(
+            std::fs::read_to_string(&path)
+                .unwrap()
+                .starts_with("# AINDA VIVO")
+        );
         let (loaded, comfort) = Preferences::load_from(Some(path.clone()));
         assert_eq!(comfort.fov_degrees, 75.0);
         assert_eq!(comfort.sensitivity, 0.0024);

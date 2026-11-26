@@ -11,7 +11,7 @@ use bevy::{
 };
 
 #[derive(Default, Resource)]
-pub(in crate::lab) struct Check {
+pub(crate) struct Check {
     frames: u32,
     ticks: u32,
     errors: Vec<&'static str>,
@@ -34,7 +34,7 @@ impl Check {
     }
 }
 
-pub(in crate::lab) fn keys(check: Option<Res<Check>>, mut keys: ResMut<ButtonInput<KeyCode>>) {
+pub(crate) fn keys(check: Option<Res<Check>>, mut keys: ResMut<ButtonInput<KeyCode>>) {
     let Some(check) = check else {
         return;
     };
@@ -53,7 +53,7 @@ pub(in crate::lab) fn keys(check: Option<Res<Check>>, mut keys: ResMut<ButtonInp
     }
 }
 
-pub(in crate::lab) fn verify(
+pub(crate) fn verify(
     (mut check, options, catalog, lab): (ResMut<Check>, Res<Options>, Res<Catalog>, Res<Lab>),
     (mut session, mut player, mut comfort, campaign): (
         ResMut<Session>,

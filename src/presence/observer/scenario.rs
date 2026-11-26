@@ -16,9 +16,9 @@ pub enum BotStyle {
 }
 
 impl BotStyle {
-    pub(in crate::lab) const ALL: [Self; 3] = [Self::Side, Self::Reverse, Self::Circle];
+    pub(crate) const ALL: [Self; 3] = [Self::Side, Self::Reverse, Self::Circle];
 
-    pub(in crate::lab) fn label(self) -> &'static str {
+    pub(crate) fn label(self) -> &'static str {
         match self {
             Self::Side => "Desvio",
             Self::Reverse => "Reversão",
@@ -359,7 +359,7 @@ fn pass(case: Case, row: &ResultRow) -> bool {
     }
 }
 
-pub(in crate::lab) fn matrix(extra_seed: Option<u32>) -> (bool, String) {
+pub(crate) fn matrix(extra_seed: Option<u32>) -> (bool, String) {
     let began = Instant::now();
     let mut out = String::from("Cenários de inteligência da Presença\n");
     let mut total = 0;

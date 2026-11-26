@@ -1,14 +1,13 @@
-mod library;
-mod motion;
+pub(crate) mod library;
+use crate::presence::{motion, observer};
 mod motion_qa;
-pub(crate) mod observer;
 mod panel;
 mod qa;
-mod room;
+pub(crate) mod room;
 mod sound_lab;
 mod sound_qa;
 pub(crate) use room::LabCamera;
-mod settings;
+pub(crate) mod settings;
 
 use crate::{
     app::{Comfort, MainCamera},
@@ -19,7 +18,7 @@ use ainda_vivo_core::movement::PlayerBody;
 use bevy::{
     asset::{
         AssetApp,
-        io::{AssetSourceBuilder, embedded::EmbeddedAssetRegistry, file::FileAssetReader},
+        io::{AssetSourceBuilder, file::FileAssetReader},
     },
     audio::AudioSinkPlayback,
     camera::visibility::VisibilitySystems,
@@ -34,23 +33,23 @@ use bevy::{
 };
 use room::{Room, walker};
 use settings::{Config, Lens, Lighting, Model, ModelSpec, Preset, Tab};
-use std::{
-    collections::HashSet,
-    path::{Path, PathBuf},
-};
-
-const EMBEDDED_PATH: &str = "ainda_vivo/presenca.glb";
+use std::{collections::HashSet, path::PathBuf};
 
 pub(crate) fn cognition_cli() -> Option<bevy::app::AppExit> {
     let args = std::env::args_os().collect::<Vec<_>>();
-    if !args.iter().any(|arg| arg == "--check-cognition") {
+    let strategic = args.iter().any(|arg| arg == "--check-strategy");
+    if !strategic && !args.iter().any(|arg| arg == "--check-cognition") {
         return None;
     }
     let value = |key| args.windows(2).find(|p| p[0] == key).map(|p| &p[1]);
     let seed = value("--ai-seed").and_then(|v| v.to_str()?.parse().ok());
     let path =
         value("--smoke-report").map_or_else(|| PathBuf::from("inteligencia.txt"), PathBuf::from);
-    let (passed, report) = observer::scenario::matrix(seed);
+    let (passed, report) = if strategic {
+        observer::strategy::trials::report()
+    } else {
+        observer::scenario::matrix(seed)
+    };
     let content = format!("AINDA VIVO v{}\n{report}", crate::app::VERSION);
     let saved = std::fs::write(path, content).is_ok();
     Some(if passed && saved {
@@ -64,7 +63,6 @@ pub(crate) fn cognition_cli() -> Option<bevy::app::AppExit> {
 pub(super) struct Options {
     pub(super) enabled: bool,
     preview_station: bool,
-    physical: bool,
     source: Option<PathBuf>,
     settings: Option<PathBuf>,
     smoke: bool,
@@ -75,7 +73,7 @@ pub(super) struct Options {
     cognitive_smoke: bool,
     ai_seed: Option<u32>,
     record_motion: bool,
-    captures: Option<PathBuf>,
+    pub(crate) captures: Option<PathBuf>,
 }
 
 impl Options {
@@ -100,7 +98,7 @@ impl Options {
             || hunt_smoke
             || sound_smoke
             || cognitive_smoke;
-        let enabled = has("--dev-lab") || smoke || physical;
+        let enabled = has("--dev-lab") || smoke || has("--lab-campaign-preview");
         let local =
             std::env::var_os("LOCALAPPDATA").map(|p| PathBuf::from(p).join("AindaVivo/dev-lab"));
         Self {
@@ -108,7 +106,6 @@ impl Options {
             preview_station: enabled
                 && !physical
                 && (has("--smoke-lab") || has("--lab-campaign-preview")),
-            physical,
             source: enabled.then(|| value("--lab-assets")).flatten(),
             settings: value("--lab-config").or_else(|| {
                 (!smoke)
@@ -141,11 +138,11 @@ impl Options {
         }
     }
 
-    fn path(&self) -> &'static str {
+    pub(crate) fn path(&self) -> &'static str {
         if self.source.is_some() {
             "lab://models/presenca.glb"
         } else {
-            "embedded://ainda_vivo/presenca.glb"
+            crate::presence::rig::EMBEDDED
         }
     }
 }
@@ -165,24 +162,13 @@ impl Plugin for LabPlugin {
             },
             _ => (Config::default(), "Sala de inspeção pronta.".into()),
         };
-        app.world()
-            .resource::<EmbeddedAssetRegistry>()
-            .insert_asset(
-                PathBuf::from(file!()),
-                Path::new(EMBEDDED_PATH),
-                include_bytes!("../assets/models/presenca.glb").as_slice(),
-            );
-        let physical = app.world().resource::<Options>().physical;
         app.insert_resource(config)
             .insert_resource(Lab {
                 status,
                 ..default()
             })
-            .init_resource::<library::Catalog>()
-            .insert_resource(observer::Campaign::new(physical))
             .add_message::<Action>()
             .add_message::<motion::MotionEvent>()
-            .add_systems(Startup, library::begin_import)
             .add_systems(
                 PreUpdate,
                 (
@@ -198,15 +184,7 @@ impl Plugin for LabPlugin {
                     .after(InputSystems),
             )
             .add_systems(FixedUpdate, room::walk.run_if(active))
-            .add_systems(Update, library::finish_import)
-            .add_systems(
-                Update,
-                observer::update_campaign
-                    .after(crate::atmosphere::director::update)
-                    .before(crate::scene::presence::update)
-                    .run_if(campaign_running),
-            )
-            .add_systems(Update, library::animate_observer)
+            .add_systems(Update, library::prepare_lab_models)
             .add_systems(
                 Update,
                 (
@@ -274,28 +252,28 @@ impl Plugin for LabPlugin {
 }
 
 #[derive(Resource, Default)]
-pub(super) struct Lab {
-    active: Option<Active>,
+pub(crate) struct Lab {
+    pub(crate) active: Option<Active>,
     parked: Option<(Entity, Entity, Room)>,
     resume_hold: bool,
     search_focus: bool,
     status: String,
 }
 
-struct Active {
-    root: Entity,
+pub(crate) struct Active {
+    pub(crate) root: Entity,
     interface: Entity,
-    room: Room,
+    pub(crate) room: Room,
     suspended_cameras: Vec<(Entity, bool)>,
     resume_audio: HashSet<Entity>,
     captured: bool,
     look_armed: bool,
     jump: bool,
-    walker: PlayerBody,
+    pub(crate) walker: PlayerBody,
     eye: f32,
     orbit: Option<Orbit>,
     playback: Playback,
-    observer: observer::TestLab,
+    pub(crate) observer: observer::TestLab,
     sound: sound_lab::SoundLab,
 }
 
@@ -374,7 +352,10 @@ impl Playback {
 }
 
 impl Active {
-    fn reset_view(&mut self, lens: &Lens) {
+    pub(crate) fn cancel_demonstration(&mut self) {
+        self.playback.cancel_run();
+    }
+    pub(crate) fn reset_view(&mut self, lens: &Lens) {
         self.walker =
             walker(Vec3::from(lens.position).with_y((lens.position[1] - 1.62).max(0.002)));
         self.eye = 1.62;
@@ -383,7 +364,7 @@ impl Active {
         self.jump = false;
     }
 
-    fn camera_transform(&self, config: &Config) -> Transform {
+    pub(crate) fn camera_transform(&self, config: &Config) -> Transform {
         let lens = &config.lens;
         let orientation = Quat::from_rotation_y(lens.yaw) * Quat::from_rotation_x(lens.pitch);
         let translation = if let Some(orbit) = self.orbit {
@@ -417,7 +398,7 @@ impl Active {
     }
 }
 
-pub(super) fn campaign_running(lab: Option<Res<Lab>>) -> bool {
+pub(crate) fn campaign_running(lab: Option<Res<Lab>>) -> bool {
     lab.is_none_or(|lab| lab.active.is_none() && !lab.resume_hold)
 }
 
@@ -583,7 +564,7 @@ fn hold_campaign_audio(mut lab: ResMut<Lab>, audio: sound_lab::CampaignSinks) {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
-enum Knob {
+pub(crate) enum Knob {
     Translation(usize),
     Angles(usize),
     Scale,
@@ -599,7 +580,7 @@ enum Knob {
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Message)]
-enum Action {
+pub(crate) enum Action {
     CaptureCursor,
     SetTab(Tab),
     Category,
@@ -1135,5 +1116,11 @@ fn cursor(
         if cursor.visible == captured {
             cursor.visible = !captured;
         }
+    }
+}
+
+impl Lab {
+    pub(crate) fn is_open(&self) -> bool {
+        self.active.is_some()
     }
 }
